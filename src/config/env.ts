@@ -8,6 +8,17 @@ const schema = z.object({
   JWT_SECRET: z.string().min(16, "JWT_SECRET must be at least 16 characters"),
   JWT_EXPIRES_IN: z.string().default("30d"),
   CLIENT_ORIGIN: z.string().default("http://localhost:3000"),
+
+  // Optional: the "Use AI to analyze for improvements" feature is disabled
+  // (returns a clear error) until this is set, rather than the whole server
+  // failing to boot.
+  OPENAI_API_KEY: z.string().optional(),
+  OPENAI_MODEL: z.string().default("gpt-4o-mini"),
+
+  // Read-aloud ("Play audio" buttons). Reuses OPENAI_API_KEY above.
+  // Female voice options: nova, shimmer. Male/neutral: alloy, echo, fable, onyx.
+  OPENAI_TTS_MODEL: z.string().default("tts-1"),
+  OPENAI_TTS_VOICE: z.string().default("nova"),
 });
 
 const parsed = schema.safeParse(process.env);
