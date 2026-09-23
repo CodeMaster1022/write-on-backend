@@ -8,21 +8,48 @@ const words = [
   { word: "a", partOfSpeech: "article", meaning: "points to any one of them", example: "A dog barked.", tier: 1 },
   { word: "an", partOfSpeech: "article", meaning: "use before a vowel sound", example: "An owl hooted.", tier: 1 },
 
-  // Nouns
-  { word: "octopus", partOfSpeech: "noun", meaning: "a sea animal with eight arms", example: "The octopus hid in the rocks.", tier: 1 },
-  { word: "teacher", partOfSpeech: "noun", meaning: "a person who helps you learn", example: "My teacher read us a story.", tier: 1 },
+  // Nouns — category tags power the person/place/thing breakdown in Noun Assistance.
+  { word: "octopus", partOfSpeech: "noun", category: "thing", meaning: "a sea animal with eight arms", example: "The octopus hid in the rocks.", tier: 1 },
+  { word: "teacher", partOfSpeech: "noun", category: "person", meaning: "a person who helps you learn", example: "My teacher read us a story.", tier: 1 },
   { word: "storm", partOfSpeech: "noun", meaning: "wild, windy weather", example: "The storm shook the windows.", tier: 2 },
-  { word: "library", partOfSpeech: "noun", meaning: "a place full of books", example: "We walked to the library.", tier: 2 },
+  { word: "library", partOfSpeech: "noun", category: "place", meaning: "a place full of books", example: "We walked to the library.", tier: 2 },
   { word: "adventure", partOfSpeech: "noun", meaning: "an exciting journey", example: "Her adventure began at dawn.", tier: 3 },
-  { word: "invention", partOfSpeech: "noun", meaning: "something new that someone makes", example: "His invention could fly.", tier: 3 },
+  { word: "invention", partOfSpeech: "noun", category: "thing", meaning: "something new that someone makes", example: "His invention could fly.", tier: 3 },
 
-  // Verbs
-  { word: "ran", partOfSpeech: "verb", meaning: "moved fast on your feet", example: "She ran to the bus.", tier: 1 },
-  { word: "painted", partOfSpeech: "verb", meaning: "made a picture with paint", example: "He painted a blue whale.", tier: 1 },
-  { word: "shouted", partOfSpeech: "verb", meaning: "said something very loudly", example: "They shouted from the field.", tier: 2 },
-  { word: "discovered", partOfSpeech: "verb", meaning: "found something for the first time", example: "We discovered a tunnel.", tier: 2 },
-  { word: "hesitated", partOfSpeech: "verb", meaning: "waited because you felt unsure", example: "She hesitated at the door.", tier: 3 },
-  { word: "wandered", partOfSpeech: "verb", meaning: "walked with no set path", example: "He wandered through the market.", tier: 3 },
+  // Noun examples, categorized — matches the original app's people/places/things columns.
+  { word: "chef", partOfSpeech: "noun", category: "person", meaning: "someone who cooks for a living", example: "The chef made soup.", tier: 1 },
+  { word: "Ms. Leon", partOfSpeech: "noun", category: "person", meaning: "someone's name", example: "Ms. Leon waved hello.", tier: 1 },
+  { word: "a girl", partOfSpeech: "noun", category: "person", meaning: "a young female person", example: "A girl ran past.", tier: 1 },
+  { word: "tutor", partOfSpeech: "noun", category: "person", meaning: "someone who teaches you one-on-one", example: "My tutor helped with math.", tier: 1 },
+
+  { word: "Paris", partOfSpeech: "noun", category: "place", meaning: "a city in France", example: "We visited Paris.", tier: 1 },
+  { word: "NYC", partOfSpeech: "noun", category: "place", meaning: "short for New York City", example: "NYC has tall buildings.", tier: 1 },
+  { word: "Asia", partOfSpeech: "noun", category: "place", meaning: "a continent", example: "Asia is the largest continent.", tier: 1 },
+  { word: "my house", partOfSpeech: "noun", category: "place", meaning: "where you live", example: "I ran home to my house.", tier: 1 },
+
+  { word: "shoe", partOfSpeech: "noun", category: "thing", meaning: "something you wear on your foot", example: "My shoe untied itself.", tier: 1 },
+  { word: "cup", partOfSpeech: "noun", category: "thing", meaning: "something you drink from", example: "She filled the cup.", tier: 1 },
+  { word: "class", partOfSpeech: "noun", category: "thing", meaning: "a group of students learning together", example: "Our class went outside.", tier: 1 },
+  { word: "robot", partOfSpeech: "noun", category: "thing", meaning: "a machine that can move and act", example: "The robot rolled forward.", tier: 1 },
+
+  // Verbs — verbType tags power the Action/Linking breakdown in Verb Assistance.
+  { word: "ran", partOfSpeech: "verb", verbType: "action", meaning: "moved fast on your feet", example: "She ran to the bus.", tier: 1 },
+  { word: "painted", partOfSpeech: "verb", verbType: "action", meaning: "made a picture with paint", example: "He painted a blue whale.", tier: 1 },
+  { word: "shouted", partOfSpeech: "verb", verbType: "action", meaning: "said something very loudly", example: "They shouted from the field.", tier: 2 },
+  { word: "discovered", partOfSpeech: "verb", verbType: "action", meaning: "found something for the first time", example: "We discovered a tunnel.", tier: 2 },
+  { word: "hesitated", partOfSpeech: "verb", verbType: "action", meaning: "waited because you felt unsure", example: "She hesitated at the door.", tier: 3 },
+  { word: "wandered", partOfSpeech: "verb", verbType: "action", meaning: "walked with no set path", example: "He wandered through the market.", tier: 3 },
+  { word: "swimming", partOfSpeech: "verb", verbType: "action", meaning: "moving through water", example: "The frog is swimming.", tier: 1 },
+  { word: "fishing", partOfSpeech: "verb", verbType: "action", meaning: "trying to catch fish", example: "We went fishing at dawn.", tier: 1 },
+  { word: "hopped", partOfSpeech: "verb", verbType: "action", meaning: "jumped on one or both feet", example: "The rabbit hopped away.", tier: 1 },
+
+  // Linking verbs — connect a noun to a describing word or phrase, not an action.
+  { word: "is", partOfSpeech: "verb", verbType: "linking", meaning: "links one thing to another, right now", example: "The sky is blue.", tier: 1 },
+  { word: "are", partOfSpeech: "verb", verbType: "linking", meaning: "links more than one thing, right now", example: "They are happy.", tier: 1 },
+  { word: "am", partOfSpeech: "verb", verbType: "linking", meaning: "links yourself to something, right now", example: "I am ready.", tier: 1 },
+  { word: "was", partOfSpeech: "verb", verbType: "linking", meaning: "links one thing to another, in the past", example: "She was tired.", tier: 1 },
+  { word: "were", partOfSpeech: "verb", verbType: "linking", meaning: "links more than one thing, in the past", example: "We were excited.", tier: 1 },
+  { word: "be", partOfSpeech: "verb", verbType: "linking", meaning: "links something to a describing word, in general", example: "I want to be kind.", tier: 1 },
 
   // Adjectives — the four from the MVP, plus more (and "Brilliant" spelled right).
   { word: "shiny", partOfSpeech: "adjective", meaning: "bright, like it catches light", example: "The shiny coin rolled away.", tier: 1 },

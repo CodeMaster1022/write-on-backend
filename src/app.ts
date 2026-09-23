@@ -9,6 +9,7 @@ import { writingsRouter } from "./routes/writings.routes.js";
 import { wordbankRouter } from "./routes/wordbank.routes.js";
 import { rewardsRouter } from "./routes/rewards.routes.js";
 import { teacherRouter } from "./routes/teacher.routes.js";
+import { dictionaryRouter } from "./routes/dictionary.routes.js";
 
 export function createApp() {
   const app = express();
@@ -32,6 +33,7 @@ export function createApp() {
   app.use("/api/wordbank", wordbankRouter);
   app.use("/api/rewards", rewardsRouter);
   app.use("/api/teacher", teacherRouter);
+  app.use("/api/dictionary", dictionaryRouter);
 
   app.use(notFound);
   app.use(errorHandler);
