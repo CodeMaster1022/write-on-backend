@@ -1,6 +1,7 @@
-import express from "express";
+import express, { type RequestHandler } from "express";
 import cors from "cors";
-import helmet from "helmet";
+import helmetImport from "helmet";
+import type { HelmetOptions } from "helmet";
 import morgan from "morgan";
 import { env, isProd } from "./config/env.js";
 import { errorHandler, notFound } from "./middleware/error.js";
@@ -13,6 +14,13 @@ import { dictionaryRouter } from "./routes/dictionary.routes.js";
 import { aiRouter } from "./routes/ai.routes.js";
 import { ttsRouter } from "./routes/tts.routes.js";
 import { sttRouter } from "./routes/stt.routes.js";
+
+// Some build environments (seen on Vercel) resolve helmet's dual CJS/ESM
+// type declarations to the module namespace instead of unwrapping its
+// default export, so TypeScript sees it as non-callable even though the
+// real ESM runtime import is always the callable function. Assert the
+// known-correct shape so the build is stable across environments.
+const helmet = helmetImport as unknown as (options?: Readonly<HelmetOptions>) => RequestHandler;
 
 export function createApp() {
   const app = express();
