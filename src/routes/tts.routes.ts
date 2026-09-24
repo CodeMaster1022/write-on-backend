@@ -11,7 +11,10 @@ export const ttsRouter = Router();
 
 ttsRouter.use(requireAuth);
 
-const CACHE_DIR = path.resolve("tts-cache");
+// Vercel's filesystem is read-only outside /tmp (which is itself wiped
+// between cold starts), so cache there when deployed on Vercel; elsewhere
+// (the VPS, local dev) a project-relative dir persists across requests.
+const CACHE_DIR = process.env.VERCEL ? path.join("/tmp", "tts-cache") : path.resolve("tts-cache");
 
 const bodySchema = z.object({
   // Covers both short static prompts and a full generated essay draft.
@@ -73,11 +76,13 @@ ttsRouter.post("/", async (req, res) => {
 
   const audio = Buffer.from(await apiRes.arrayBuffer());
 
-  await mkdir(CACHE_DIR, { recursive: true });
-  await writeFile(cachePath, audio).catch((err) => {
-    // Caching is an optimization, not a requirement — still serve the audio if the write fails.
+  try {
+    // Caching is an optimization, not a requirement — still serve the audio if this fails.
+    await mkdir(CACHE_DIR, { recursive: true });
+    await writeFile(cachePath, audio);
+  } catch (err) {
     console.error("[tts] failed to write cache file", err);
-  });
+  }
 
   res.setHeader("Content-Type", "audio/mpeg");
   res.setHeader("Cache-Control", "public, max-age=31536000, immutable");
