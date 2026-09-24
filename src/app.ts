@@ -12,6 +12,7 @@ import { teacherRouter } from "./routes/teacher.routes.js";
 import { dictionaryRouter } from "./routes/dictionary.routes.js";
 import { aiRouter } from "./routes/ai.routes.js";
 import { ttsRouter } from "./routes/tts.routes.js";
+import { sttRouter } from "./routes/stt.routes.js";
 
 export function createApp() {
   const app = express();
@@ -38,6 +39,7 @@ export function createApp() {
   app.use("/api/dictionary", dictionaryRouter);
   app.use("/api/ai", aiRouter);
   app.use("/api/tts", ttsRouter);
+  app.use("/api/stt", sttRouter);
 
   app.use(notFound);
   app.use(errorHandler);

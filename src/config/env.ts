@@ -19,6 +19,10 @@ const schema = z.object({
   // Female voice options: nova, shimmer. Male/neutral: alloy, echo, fable, onyx.
   OPENAI_TTS_MODEL: z.string().default("tts-1"),
   OPENAI_TTS_VOICE: z.string().default("nova"),
+
+  // Real-time speech-to-text ("dictate" mic button on answer fields).
+  // Get a key at https://console.deepgram.com.
+  DEEPGRAM_API_KEY: z.string().optional(),
 });
 
 const parsed = schema.safeParse(process.env);
