@@ -47,8 +47,11 @@ authRouter.post("/login", async (req, res) => {
 
   const user = await User.findOne({ email: body.email }).select("+passwordHash");
   if (!user || !(await user.verifyPassword(body.password))) {
+    console.log(`[auth] login failed for ${body.email}`);
     throw new HttpError(401, "We couldn't match that email and password.");
   }
+
+  console.log(`[auth] login succeeded for ${user.email} (${user.id})`);
 
   res.json({
     token: signToken({ sub: user.id, role: user.role }),
