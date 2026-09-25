@@ -31,7 +31,11 @@ if (!parsed.success) {
   const issues = parsed.error.issues
     .map((i) => `  - ${i.path.join(".")}: ${i.message}`)
     .join("\n");
-  console.error(`Invalid environment configuration:\n${issues}\n\nCopy .env.example to .env and fill it in.`);
+  const message = `Invalid environment configuration:\n${issues}\n\nCopy .env.example to .env and fill it in.`;
+  // On Vercel, exiting kills the function with an opaque error; throwing
+  // lets api/index.ts report which variables are missing.
+  if (process.env.VERCEL) throw new Error(message);
+  console.error(message);
   process.exit(1);
 }
 
