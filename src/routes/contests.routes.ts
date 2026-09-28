@@ -57,6 +57,7 @@ contestsRouter.get("/", async (req, res) => {
         endsAt: c.endsAt,
         status,
         prize: prizes.get(c.prizeKey) ?? null,
+        stepCount: (c.steps ?? []).length,
         entryCount: count?.entries ?? 0,
         // Winners stay private until Erin announces them.
         winnerCount: status === "announced" ? (count?.winners ?? 0) : null,
@@ -88,10 +89,14 @@ contestsRouter.post("/:id/enter", async (req, res) => {
   if (status === "upcoming") throw new HttpError(400, "This contest hasn't started yet.");
   if (status !== "open") throw new HttpError(400, "This contest has closed. Watch for the next one!");
 
-  const writing = await Writing.findOne({ _id: writingId, userId: user._id }).select("type createdAt").lean();
+  const writing = await Writing.findOne({ _id: writingId, userId: user._id }).select("type createdAt parts").lean();
   if (!writing) throw new HttpError(404, "We couldn't find that piece of writing.");
   if (writing.type !== contest.writingType) {
     throw new HttpError(400, `This contest is for a ${contest.writingType}. Write one to enter!`);
+  }
+  const parts = (writing.parts ?? {}) as Record<string, unknown>;
+  if ((contest.steps ?? []).length > 0 && parts.contestId !== String(contest._id)) {
+    throw new HttpError(400, "Write your entry with this contest's steps to enter.");
   }
   if (writing.createdAt < contest.startsAt) {
     throw new HttpError(400, "Contest entries need to be written after the contest starts.");
@@ -155,4 +160,31 @@ contestsRouter.post("/wins/:entryId/seen", async (req, res) => {
     { winnerSeenAt: new Date() },
   );
   res.status(204).send();
+});
+
+/** One contest with Erin's step-by-step questions, for the contest writing page. Registered last so "/wins" isn't read as an id. */
+contestsRouter.get("/:id", async (req, res) => {
+  const contestId = idParam(req.params.id, "We couldn't find that contest.");
+  const contest = await Contest.findById(contestId).lean();
+  if (!contest) throw new HttpError(404, "We couldn't find that contest.");
+
+  const [entry, prizes] = await Promise.all([
+    ContestEntry.findOne({ contestId: contest._id, userId: req.user!._id }).lean(),
+    prizesByKey([contest.prizeKey]),
+  ]);
+
+  res.json({
+    contest: {
+      id: String(contest._id),
+      title: contest.title,
+      prompt: contest.prompt,
+      writingType: contest.writingType,
+      startsAt: contest.startsAt,
+      endsAt: contest.endsAt,
+      status: contestStatus(contest),
+      prize: prizes.get(contest.prizeKey) ?? null,
+      steps: (contest.steps ?? []).map((s) => ({ question: s.question, example: s.example ?? "" })),
+      entered: entry !== null,
+    },
+  });
 });

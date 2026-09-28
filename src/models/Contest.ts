@@ -1,6 +1,17 @@
 import { Schema, model, type InferSchemaType } from "mongoose";
 import { WRITING_TYPES } from "./Writing.js";
 
+export const MAX_CONTEST_STEPS = 10;
+
+const contestStepSchema = new Schema(
+  {
+    question: { type: String, required: true, trim: true, maxlength: 200 },
+    /** Optional example answer shown as the box's placeholder. */
+    example: { type: String, trim: true, maxlength: 200, default: "" },
+  },
+  { _id: false },
+);
+
 const contestSchema = new Schema(
   {
     title: { type: String, required: true, trim: true, maxlength: 80 },
@@ -11,6 +22,8 @@ const contestSchema = new Schema(
     endsAt: { type: Date, required: true, index: true },
     /** Key of an exclusive RewardItem that every entrant receives. */
     prizeKey: { type: String, required: true },
+    /** Erin's step-by-step questions. Empty on contests made before steps existed. */
+    steps: { type: [contestStepSchema], default: [] },
     /** Set when Erin announces the winners; winners only see their badge after this. */
     announcedAt: { type: Date, default: null },
     createdBy: { type: Schema.Types.ObjectId, ref: "User", required: true },

@@ -3,7 +3,7 @@ import { z } from "zod";
 import { normalizeGrade } from "../config/grades.js";
 import { requireAdmin, requireAuth } from "../middleware/auth.js";
 import { HttpError } from "../middleware/error.js";
-import { Contest, ContestEntry, contestStatus } from "../models/Contest.js";
+import { Contest, ContestEntry, MAX_CONTEST_STEPS, contestStatus } from "../models/Contest.js";
 import { RewardItem } from "../models/RewardItem.js";
 import { User } from "../models/User.js";
 import { WRITING_TYPES, Writing } from "../models/Writing.js";
@@ -55,6 +55,7 @@ adminRouter.get("/contests", async (_req, res) => {
       startsAt: c.startsAt,
       endsAt: c.endsAt,
       prizeKey: c.prizeKey,
+      steps: (c.steps ?? []).map((s) => ({ question: s.question, example: s.example ?? "" })),
       announcedAt: c.announcedAt,
       status: contestStatus(c),
       entryCount: byId.get(String(c._id))?.entries ?? 0,
@@ -70,6 +71,15 @@ const contestFields = z.object({
   startsAt: z.coerce.date(),
   endsAt: z.coerce.date(),
   prizeKey: z.string().trim().min(1, "Pick a prize."),
+  steps: z
+    .array(
+      z.object({
+        question: z.string().trim().min(1, "Every step needs a question.").max(200),
+        example: z.string().trim().max(200).default(""),
+      }),
+    )
+    .min(1, "Add at least one step for students to answer.")
+    .max(MAX_CONTEST_STEPS, `A contest can have up to ${MAX_CONTEST_STEPS} steps.`),
 });
 
 const createSchema = contestFields.refine((c) => c.endsAt > c.startsAt, {
