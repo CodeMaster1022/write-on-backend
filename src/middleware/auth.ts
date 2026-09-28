@@ -48,6 +48,13 @@ export async function requireAuth(req: Request, _res: Response, next: NextFuncti
   next();
 }
 
+export function requireAdmin(req: Request, _res: Response, next: NextFunction) {
+  if (!req.user?.isAdmin) {
+    throw new HttpError(403, "This area is for Write on! admins.");
+  }
+  next();
+}
+
 export function requireTeacher(req: Request, _res: Response, next: NextFunction) {
   if (req.user?.role !== "teacher") {
     throw new HttpError(403, "This area is for teacher accounts.");

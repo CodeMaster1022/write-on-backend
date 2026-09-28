@@ -18,6 +18,8 @@ const userSchema = new Schema(
     passwordHash: { type: String, select: false },
     role: { type: String, enum: ["student", "teacher"], default: "student", index: true },
     isGuest: { type: Boolean, default: false },
+    /** Can run contests. Only set with `npm run make-admin`, never through the API. */
+    isAdmin: { type: Boolean, default: false },
 
     gradeLevel: { type: String, trim: true, maxlength: 20 },
 
@@ -64,6 +66,7 @@ export function publicUser(user: UserDoc) {
     email: user.email ?? null,
     role: user.role,
     isGuest: user.isGuest,
+    isAdmin: user.isAdmin ?? false,
     gradeLevel: user.gradeLevel ?? null,
     classCode: user.classCode ?? null,
     inkDrops: user.inkDrops,

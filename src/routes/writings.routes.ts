@@ -1,5 +1,6 @@
 import { Router } from "express";
 import { z } from "zod";
+import { FeedbackRun } from "../models/FeedbackRun.js";
 import { REWARD_PER_TYPE, WRITING_TYPES, Writing, countWords } from "../models/Writing.js";
 import { publicUser } from "../models/User.js";
 import { requireAuth } from "../middleware/auth.js";
@@ -35,8 +36,15 @@ const createSchema = z.object({
   parts: z.record(z.string(), z.unknown()).optional(),
 });
 
+const MAX_ACTIVE_SECONDS = 6 * 60 * 60;
+
+const saveExtrasSchema = z.object({
+  activeSeconds: z.number().int().min(0).max(MAX_ACTIVE_SECONDS).optional(),
+  feedbackRunId: z.string().regex(/^[a-f0-9]{24}$/).optional(),
+});
+
 writingsRouter.post("/", async (req, res) => {
-  const body = createSchema.parse(req.body);
+  const body = createSchema.extend(saveExtrasSchema.shape).parse(req.body);
   const user = req.user!;
 
   const earned = REWARD_PER_TYPE[body.type];
@@ -49,7 +57,15 @@ writingsRouter.post("/", async (req, res) => {
     parts: body.parts ?? {},
     wordCount: countWords(body.content),
     inkDropsEarned: earned,
+    activeSeconds: body.activeSeconds ?? 0,
   });
+
+  if (body.feedbackRunId) {
+    await FeedbackRun.updateOne(
+      { _id: body.feedbackRunId, userId: user._id, writingId: null },
+      { writingId: writing._id },
+    );
+  }
 
   user.inkDrops += earned;
   user.writingCount += 1;

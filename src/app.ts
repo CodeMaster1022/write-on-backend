@@ -14,6 +14,11 @@ import { dictionaryRouter } from "./routes/dictionary.routes.js";
 import { aiRouter } from "./routes/ai.routes.js";
 import { ttsRouter } from "./routes/tts.routes.js";
 import { sttRouter } from "./routes/stt.routes.js";
+import { eventsRouter } from "./routes/events.routes.js";
+import { inkiRouter } from "./routes/inki.routes.js";
+import { reportRouter } from "./routes/report.routes.js";
+import { contestsRouter } from "./routes/contests.routes.js";
+import { adminRouter } from "./routes/admin.routes.js";
 
 // Some build environments (seen on Vercel) resolve helmet's dual CJS/ESM
 // type declarations to the module namespace instead of unwrapping its
@@ -48,6 +53,11 @@ export function createApp() {
   app.use("/api/ai", aiRouter);
   app.use("/api/tts", ttsRouter);
   app.use("/api/stt", sttRouter);
+  app.use("/api/events", eventsRouter);
+  app.use("/api/inki", inkiRouter);
+  app.use("/api/report", reportRouter);
+  app.use("/api/contests", contestsRouter);
+  app.use("/api/admin", adminRouter);
 
   app.use(notFound);
   app.use(errorHandler);

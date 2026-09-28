@@ -26,6 +26,9 @@ const writingSchema = new Schema(
 
     wordCount: { type: Number, default: 0, min: 0 },
     inkDropsEarned: { type: Number, default: 0, min: 0 },
+
+    /** Time actively spent on this piece, excluding idle time and hidden tabs. */
+    activeSeconds: { type: Number, default: 0, min: 0 },
   },
   { timestamps: true },
 );

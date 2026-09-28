@@ -89,6 +89,12 @@ const rewardItems = [
   { key: "scene-reef", name: "Coral Reef", slot: "scene", cost: 60, art: "reef", color: "#2FB6A3", blurb: "Inki's home water.", sortOrder: 1 },
   { key: "scene-library", name: "Library Nook", slot: "scene", cost: 100, art: "library", color: "#5B4E8C", blurb: "Quiet. Good for essays.", sortOrder: 2 },
   { key: "scene-night", name: "Starry Night", slot: "scene", cost: 130, art: "night", color: "#2A2340", blurb: "For the stories that come out after dark.", sortOrder: 3 },
+
+  // Contest prizes: never for sale; every contest entrant gets the contest's prize.
+  { key: "hat-witch", name: "Spooky Witch Hat", slot: "hat", cost: 0, art: "witchHat", color: "#6B4BA8", blurb: "A contest prize for brave storytellers.", sortOrder: 10, exclusive: true },
+  { key: "neck-star", name: "Star Writer Pin", slot: "neck", cost: 0, art: "starPin", color: "#FFC95C", blurb: "A contest prize for shining writers.", sortOrder: 10, exclusive: true },
+  { key: "held-wand", name: "Word Wand", slot: "held", cost: 0, art: "wand", color: "#E4577E", blurb: "A contest prize. Words are a kind of magic.", sortOrder: 10, exclusive: true },
+  { key: "scene-moon", name: "Moonlit Sky", slot: "scene", cost: 0, art: "moon", color: "#24305A", blurb: "A contest prize for late-night ideas.", sortOrder: 10, exclusive: true },
 ] as const;
 
 async function seed() {

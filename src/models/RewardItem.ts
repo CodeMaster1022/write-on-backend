@@ -16,6 +16,9 @@ const rewardItemSchema = new Schema(
 
     blurb: { type: String, trim: true, maxlength: 160, default: "" },
     sortOrder: { type: Number, default: 0 },
+
+    /** Contest prizes: can't be bought with ink drops, only given to contest entrants. */
+    exclusive: { type: Boolean, default: false, index: true },
   },
   { timestamps: true },
 );

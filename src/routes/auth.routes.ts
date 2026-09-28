@@ -1,5 +1,6 @@
 import { Router } from "express";
 import { z } from "zod";
+import { GRADES } from "../config/grades.js";
 import { User, hashPassword, publicUser } from "../models/User.js";
 import { requireAuth, signToken } from "../middleware/auth.js";
 import { HttpError } from "../middleware/error.js";
@@ -11,7 +12,7 @@ const registerSchema = z.object({
   email: z.string().trim().toLowerCase().email("That email doesn't look right."),
   password: z.string().min(8, "Use at least 8 characters."),
   role: z.enum(["student", "teacher"]).default("student"),
-  gradeLevel: z.string().trim().max(20).optional(),
+  gradeLevel: z.enum(GRADES).optional(),
   classCode: z.string().trim().toUpperCase().max(12).optional(),
 });
 
@@ -85,7 +86,7 @@ authRouter.get("/me", requireAuth, async (req, res) => {
 
 const updateMeSchema = z.object({
   displayName: z.string().trim().min(1).max(60).optional(),
-  gradeLevel: z.string().trim().max(20).nullable().optional(),
+  gradeLevel: z.enum(GRADES).nullable().optional(),
   classCode: z.string().trim().toUpperCase().max(12).nullable().optional(),
 });
 

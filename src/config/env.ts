@@ -23,6 +23,12 @@ const schema = z.object({
   // Real-time speech-to-text ("dictate" mic button on answer fields).
   // Get a key at https://console.deepgram.com.
   DEEPGRAM_API_KEY: z.string().optional(),
+
+  // Emailing progress reports. Get a key at https://resend.com. The sending
+  // address's domain must be verified in Resend; onboarding@resend.dev only
+  // delivers to the Resend account owner's own inbox (fine for testing).
+  EMAIL_API_KEY: z.string().optional(),
+  EMAIL_FROM: z.string().default("Write on! <onboarding@resend.dev>"),
 });
 
 const parsed = schema.safeParse(process.env);
