@@ -181,3 +181,11 @@ adminRouter.post("/contests/:id/announce", async (req, res) => {
   await contest.save();
   res.json({ ok: true, winners });
 });
+
+/** Removes a contest and its entries. Students keep the prize they received and their writing. */
+adminRouter.delete("/contests/:id", async (req, res) => {
+  const contest = await requireContest(req.params.id);
+  const { deletedCount } = await ContestEntry.deleteMany({ contestId: contest._id });
+  await contest.deleteOne();
+  res.json({ ok: true, entriesRemoved: deletedCount });
+});
