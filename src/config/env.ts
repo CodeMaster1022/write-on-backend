@@ -1,5 +1,6 @@
 import "dotenv/config";
 import { z } from "zod";
+import { productionProblems } from "./production.js";
 
 const schema = z.object({
   NODE_ENV: z.enum(["development", "test", "production"]).default("development"),
@@ -30,16 +31,30 @@ const schema = z.object({
   // address's domain must be verified in Resend; onboarding@resend.dev only
   // delivers to the Resend account owner's own inbox (fine for testing).
   EMAIL_API_KEY: z.string().optional(),
+
+  // Error alerts. Optional: without it, errors are only written to the server log.
+  SENTRY_DSN: z.string().optional(),
+
+  // Production only: accept requests that didn't come over HTTPS. Leave off
+  // once HTTPS is set up; it exists so a server can be moved over in steps.
+  ALLOW_HTTP: z
+    .enum(["true", "false"])
+    .default("false")
+    .transform((v) => v === "true"),
   EMAIL_FROM: z.string().default("Write on! <onboarding@resend.dev>"),
 });
 
 const parsed = schema.safeParse(process.env);
 
-if (!parsed.success) {
-  const issues = parsed.error.issues
-    .map((i) => `  - ${i.path.join(".")}: ${i.message}`)
-    .join("\n");
-  const message = `Invalid environment configuration:\n${issues}\n\nCopy .env.example to .env and fill it in.`;
+const issues: string[] = parsed.success ? [] : parsed.error.issues.map((i) => `${i.path.join(".")}: ${i.message}`);
+if (parsed.success && parsed.data.NODE_ENV === "production") {
+  const { problems, warnings } = productionProblems(parsed.data);
+  issues.push(...problems);
+  for (const w of warnings) console.warn(`[config] ${w}`);
+}
+
+if (!parsed.success || issues.length > 0) {
+  const message = `Invalid environment configuration:\n${issues.map((i) => `  - ${i}`).join("\n")}\n\nCopy .env.example to .env and fill it in.`;
   // On Vercel, exiting kills the function with an opaque error; throwing
   // lets api/index.ts report which variables are missing.
   if (process.env.VERCEL) throw new Error(message);
@@ -47,6 +62,6 @@ if (!parsed.success) {
   process.exit(1);
 }
 
-export const env = parsed.data;
+export const env = parsed.data!;
 
 export const isProd = env.NODE_ENV === "production";

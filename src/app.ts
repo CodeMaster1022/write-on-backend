@@ -4,7 +4,9 @@ import helmetImport from "helmet";
 import type { HelmetOptions } from "helmet";
 import morgan from "morgan";
 import { env, isProd } from "./config/env.js";
+import { initAlerts } from "./lib/alerts.js";
 import { errorHandler, notFound } from "./middleware/error.js";
+import { clientErrorsRouter } from "./routes/client-errors.routes.js";
 import { authRouter } from "./routes/auth.routes.js";
 import { writingsRouter } from "./routes/writings.routes.js";
 import { wordbankRouter } from "./routes/wordbank.routes.js";
@@ -29,11 +31,20 @@ import { progressRouter } from "./routes/progress.routes.js";
 const helmet = helmetImport as unknown as (options?: Readonly<HelmetOptions>) => RequestHandler;
 
 export function createApp() {
+  initAlerts();
   const app = express();
 
   // One proxy hop in front of us in production (Vercel, or nginx on the VPS),
   // so req.ip is the real client for the IP-keyed rate limiter.
   app.set("trust proxy", 1);
+
+  // Students' writing must never travel unencrypted. The health check stays open for uptime monitors.
+  if (isProd && !env.ALLOW_HTTP) {
+    app.use((req, res, next) => {
+      if (req.secure || req.path === "/api/health") return next();
+      res.status(403).json({ error: "Write on! only works over a secure connection. Use https:// in the address." });
+    });
+  }
 
   app.use(helmet());
   app.use(
@@ -64,6 +75,7 @@ export function createApp() {
   app.use("/api/contests", contestsRouter);
   app.use("/api/admin", adminRouter);
   app.use("/api/progress", progressRouter);
+  app.use("/api/client-errors", clientErrorsRouter);
 
   app.use(notFound);
   app.use(errorHandler);
