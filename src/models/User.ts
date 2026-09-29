@@ -1,5 +1,6 @@
 import { Schema, model, type InferSchemaType, type HydratedDocument } from "mongoose";
 import bcrypt from "bcryptjs";
+import { env } from "../config/env.js";
 
 export const EQUIP_SLOTS = ["hat", "neck", "held", "scene"] as const;
 export type EquipSlot = (typeof EQUIP_SLOTS)[number];
@@ -37,6 +38,18 @@ const userSchema = new Schema(
 
     writingCount: { type: Number, default: 0, min: 0 },
     lastWroteAt: { type: Date, default: null },
+
+    /** Pieces the student wants to finish each week, or null for no goal. */
+    weeklyGoal: { type: Number, min: 1, max: 14, default: null },
+    /**
+     * The goal in force from each week on ("YYYY-MM-DD" of the Monday). A week
+     * is judged by the goal set for it, so lowering the goal later can't build
+     * a streak backwards.
+     */
+    goalHistory: {
+      type: [{ _id: false, weekStart: { type: String, required: true }, perWeek: { type: Number, default: null } }],
+      default: [],
+    },
   },
   { timestamps: true },
 );
@@ -46,8 +59,11 @@ userSchema.methods.verifyPassword = async function (candidate: string): Promise<
   return bcrypt.compare(candidate, this.passwordHash as string);
 };
 
+// Full strength everywhere except automated tests, where hundreds of sign-ups would otherwise take minutes.
+const HASH_ROUNDS = env.NODE_ENV === "test" ? 4 : 12;
+
 export async function hashPassword(plain: string): Promise<string> {
-  return bcrypt.hash(plain, 12);
+  return bcrypt.hash(plain, HASH_ROUNDS);
 }
 
 export type UserAttrs = InferSchemaType<typeof userSchema>;

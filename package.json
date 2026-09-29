@@ -11,7 +11,10 @@
     "seed": "tsx src/seed/seed.ts",
     "normalize-grades": "tsx src/seed/normalize-grades.ts",
     "make-admin": "tsx src/seed/make-admin.ts",
-    "typecheck": "tsc -p tsconfig.json --noEmit"
+    "typecheck": "tsc -p tsconfig.json --noEmit && tsc -p tsconfig.test.json",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "e2e-server": "tsx tests/e2e-server.ts"
   },
   "dependencies": {
     "@deepgram/sdk": "^5.12.0",
@@ -33,7 +36,11 @@
     "@types/jsonwebtoken": "^9.0.10",
     "@types/morgan": "^1.9.10",
     "@types/node": "^24.10.1",
+    "@types/supertest": "^7.2.1",
+    "mongodb-memory-server": "^11.3.0",
+    "supertest": "^7.3.0",
     "tsx": "^4.20.6",
-    "typescript": "^5.9.3"
+    "typescript": "^5.9.3",
+    "vitest": "^5.0.2"
   }
 }

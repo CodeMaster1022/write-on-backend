@@ -1,6 +1,7 @@
 import { Router } from "express";
 import { z } from "zod";
 import { env } from "../config/env.js";
+import { gradeBand, type GradeBand } from "../config/grades.js";
 import { requireAuth } from "../middleware/auth.js";
 import { HttpError } from "../middleware/error.js";
 import { analyzeLimiter } from "../middleware/rate-limit.js";
@@ -41,6 +42,23 @@ Rules:
 
 const SENTENCE_NOTE =
   "This is a single sentence, so give grammar feedback only. Set evidence and flow to null.";
+
+/** What to expect from each grade band. Students with no grade get the base instructions only. */
+const BAND_NOTE: Record<GradeBand, string> = {
+  youngest: `This is a young writer (kindergarten to 2nd grade).
+- Keep "summary", "praise" and every "suggestion" very short, with small everyday words a 6-year-old knows.
+- Give at most 1 issue per area: the single most important one.
+- Focus grammar on the basics: a capital letter at the start, a period or other end mark, spelling of common words, and complete sentences.
+- For evidence and flow, one reason or detail, and simple joining words like "and", "then" or "because", are strong work at this age. Rate generously.`,
+  middle: `This student is in 3rd to 5th grade.
+- Expect complete sentences, correct capitals and end marks, a clear main idea backed by at least one reason or example, and simple transition words like "first", "next", "also" and "finally".`,
+  oldest: `This student is in 6th grade or older.
+- Expect specific, relevant evidence for each claim, not just opinions; varied sentence beginnings and lengths; precise word choice; a formal school tone with no casual language; and transitions that show how ideas relate, like "however", "as a result" and "for example".
+- Rate against these expectations: a 3 means strong work for this grade.
+- You may use terms like "claim", "evidence", "transition" and "tone".`,
+};
+
+const YOUNGEST_MAX_ISSUES = 1;
 
 const RATING = z.number().int().min(1).max(3);
 
@@ -109,12 +127,12 @@ const FAIL_MESSAGE = "Couldn't get AI feedback right now. Please try again in a 
  * Drops quotes the model didn't copy exactly (so the client never highlights
  * text that isn't there), and forces sentence feedback to grammar only.
  */
-function tidy(feedback: Feedback, content: string, type: WritingType): Feedback {
+function tidy(feedback: Feedback, content: string, type: WritingType, maxIssues = 3): Feedback {
   const cleanArea = <T extends Feedback["grammar"] | null>(area: T): T => {
     if (!area) return area;
     return {
       ...area,
-      issues: area.issues.map((issue) => ({
+      issues: area.issues.slice(0, maxIssues).map((issue) => ({
         ...issue,
         quote: issue.quote && content.includes(issue.quote) ? issue.quote : "",
       })),
@@ -152,9 +170,14 @@ aiRouter.post("/analyze", analyzeLimiter, async (req, res) => {
     });
   }
 
+  const band = gradeBand(req.user!.gradeLevel);
+  const system = [SYSTEM_PROMPT, band ? BAND_NOTE[band] : null, type === "sentence" ? SENTENCE_NOTE : null]
+    .filter(Boolean)
+    .join("\n\n");
+
   const raw = await chatJson(
     {
-      system: type === "sentence" ? `${SYSTEM_PROMPT}\n\n${SENTENCE_NOTE}` : SYSTEM_PROMPT,
+      system,
       user: `Here is my ${type}:\n\n${content}`,
       schemaName: "writing_feedback",
       schema: FEEDBACK_JSON_SCHEMA,
@@ -171,7 +194,7 @@ aiRouter.post("/analyze", analyzeLimiter, async (req, res) => {
   }
   const parsed = result.data;
 
-  const feedback = tidy(parsed, content, type);
+  const feedback = tidy(parsed, content, type, band === "youngest" ? YOUNGEST_MAX_ISSUES : 3);
 
   const run = await FeedbackRun.create({
     userId: req.user!._id,

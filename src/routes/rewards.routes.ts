@@ -18,15 +18,30 @@ async function wonPrizeKeys(userId: unknown): Promise<Set<string>> {
   return new Set(contests.map((c) => c.prizeKey));
 }
 
+/** Prize keys a student can still earn: contests that are upcoming or open right now. */
+async function offeredPrizeKeys(): Promise<Set<string>> {
+  const contests = await Contest.find({ announcedAt: null, endsAt: { $gte: new Date() } })
+    .select("prizeKey")
+    .lean();
+  return new Set(contests.map((c) => c.prizeKey));
+}
+
 rewardsRouter.use(requireAuth);
 
 /** Everything the Club Inki Closet screen needs in one call. */
 rewardsRouter.get("/", async (req, res) => {
   const user = req.user!;
-  const [items, wonKeys] = await Promise.all([
+  const [allItems, wonKeys, offeredKeys] = await Promise.all([
     RewardItem.find().sort({ slot: 1, sortOrder: 1, cost: 1 }).lean(),
     wonPrizeKeys(user._id),
+    offeredPrizeKeys(),
   ]);
+
+  // A contest prize only shows if the student has it or a live contest is
+  // offering it — otherwise "Contest prize" would lead nowhere useful.
+  const items = allItems.filter(
+    (item) => !item.exclusive || user.ownedItems.includes(item.key) || offeredKeys.has(item.key),
+  );
 
   res.json({
     items: items.map((item) => ({

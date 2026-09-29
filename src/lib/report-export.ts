@@ -141,6 +141,24 @@ export function reportDocument(report: Report, tz: string): ReportDocument {
         : undefined,
   });
 
+  if (report.goal && (report.goal.perWeek !== null || report.goal.streak.best > 0)) {
+    const g = report.goal;
+    const lines: string[] = [
+      g.perWeek !== null
+        ? `The student's goal is ${g.perWeek} ${g.perWeek === 1 ? "piece" : "pieces"} a week. This week so far: ${g.thisWeek.pieces}.`
+        : "The student has turned their weekly goal off.",
+    ];
+    if (g.recent.withGoal > 0) {
+      lines.push(`Goal met in ${g.recent.met} of the last ${g.recent.withGoal} ${g.recent.withGoal === 1 ? "week" : "weeks"}.`);
+    }
+    const weeks = (n: number) => `${n} ${n === 1 ? "week" : "weeks"}`;
+    out.push({
+      heading: "Weekly writing goal",
+      paragraphs: lines,
+      bullets: [`Current streak: ${weeks(g.streak.current)} in a row`, `Longest streak: ${weeks(g.streak.best)}`],
+    });
+  }
+
   const patterns = [
     ...focus.topIssues.map((i) => `${i.label}: flagged ${times(i.count)}`),
     ...focus.inkiChecks.map((c) => `${c.label}: checked with Inki ${times(c.total)}, "not yet" ${times(c.notYet)}`),

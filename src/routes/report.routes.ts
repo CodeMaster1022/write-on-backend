@@ -142,7 +142,7 @@ async function loadShared(token: string) {
   const share = await ReportShare.findOne({ tokenHash: hashToken(token), revokedAt: null, expiresAt: { $gt: new Date() } }).lean();
   if (!share) throw new HttpError(404, EXPIRED_LINK);
 
-  const user = await User.findById(share.userId).select("displayName gradeLevel").lean();
+  const user = await User.findById(share.userId).select("displayName gradeLevel weeklyGoal goalHistory").lean();
   if (!user) throw new HttpError(404, EXPIRED_LINK);
 
   const tz = share.timeZone || "UTC";

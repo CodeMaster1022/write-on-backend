@@ -19,6 +19,7 @@ import { inkiRouter } from "./routes/inki.routes.js";
 import { reportRouter } from "./routes/report.routes.js";
 import { contestsRouter } from "./routes/contests.routes.js";
 import { adminRouter } from "./routes/admin.routes.js";
+import { progressRouter } from "./routes/progress.routes.js";
 
 // Some build environments (seen on Vercel) resolve helmet's dual CJS/ESM
 // type declarations to the module namespace instead of unwrapping its
@@ -42,7 +43,7 @@ export function createApp() {
     }),
   );
   app.use(express.json({ limit: "200kb" }));
-  app.use(morgan(isProd ? "combined" : "dev"));
+  if (env.NODE_ENV !== "test") app.use(morgan(isProd ? "combined" : "dev"));
 
   app.get("/api/health", (_req, res) => {
     res.json({ ok: true, service: "write-on-api", env: env.NODE_ENV });
@@ -62,6 +63,7 @@ export function createApp() {
   app.use("/api/report", reportRouter);
   app.use("/api/contests", contestsRouter);
   app.use("/api/admin", adminRouter);
+  app.use("/api/progress", progressRouter);
 
   app.use(notFound);
   app.use(errorHandler);

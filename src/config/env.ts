@@ -19,6 +19,8 @@ const schema = z.object({
   // Female voice options: nova, shimmer. Male/neutral: alloy, echo, fable, onyx.
   OPENAI_TTS_MODEL: z.string().default("tts-1"),
   OPENAI_TTS_VOICE: z.string().default("nova"),
+  /** Where read-aloud audio for the app's fixed prompts is kept. Tests point this at a temporary folder. */
+  TTS_CACHE_DIR: z.string().optional(),
 
   // Real-time speech-to-text ("dictate" mic button on answer fields).
   // Get a key at https://console.deepgram.com.

@@ -18,14 +18,33 @@ export function normalizeGrade(raw: string | null | undefined): Grade | null {
   return n >= 1 && n <= 12 ? (String(n) as Grade) : null;
 }
 
+export type GradeBand = "youngest" | "middle" | "oldest";
+
+/** K–2, 3–5, and 6 and up (grade 6 starts middle school). Null when there's no grade. */
+export function gradeBand(gradeLevel: string | null | undefined): GradeBand | null {
+  const grade = normalizeGrade(gradeLevel);
+  if (grade === null) return null;
+  const n = grade === "K" ? 0 : Number(grade);
+  if (n <= 2) return "youngest";
+  if (n <= 5) return "middle";
+  return "oldest";
+}
+
 export const INKI_DAILY_LIMITS = { youngest: 5, middle: 10, oldest: 20 } as const;
 
 /** K–2 → 5, 3–5 → 10, 6 and up → 20. No grade (including guests) gets the middle limit. */
 export function inkiDailyLimit(gradeLevel: string | null | undefined): number {
-  const grade = normalizeGrade(gradeLevel);
-  if (grade === null) return INKI_DAILY_LIMITS.middle;
-  const n = grade === "K" ? 0 : Number(grade);
-  if (n <= 2) return INKI_DAILY_LIMITS.youngest;
-  if (n <= 5) return INKI_DAILY_LIMITS.middle;
-  return INKI_DAILY_LIMITS.oldest;
+  return INKI_DAILY_LIMITS[gradeBand(gradeLevel) ?? "middle"];
+}
+
+/**
+ * Word bank tiers in the order a grade band should see them. The youngest
+ * writers skip the hardest words; the oldest see the hardest words first.
+ * Grades 3–5 and students with no grade keep the original easiest-first list.
+ */
+export function wordTiersFor(gradeLevel: string | null | undefined): number[] {
+  const band = gradeBand(gradeLevel);
+  if (band === "youngest") return [1, 2];
+  if (band === "oldest") return [3, 2, 1];
+  return [1, 2, 3];
 }

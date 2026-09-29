@@ -9,6 +9,7 @@ import { InkiQuestion, type InkiElement } from "../models/InkiQuestion.js";
 import { ReportSummary } from "../models/ReportShare.js";
 import { WRITING_TYPES, Writing, type WritingType } from "../models/Writing.js";
 import { chatJson } from "./openai.js";
+import { goalSummaryFor, type GoalEntry, type GoalSummary } from "./progress.js";
 import { weekStartKey } from "./time.js";
 
 export const REPORT_PERIODS = [7, 30, 90] as const;
@@ -98,6 +99,8 @@ export interface Report {
     topIssues: { label: string; count: number }[];
     inkiChecks: { label: string; total: number; notYet: number }[];
   };
+  /** The student's weekly writing goal, if they ever set one. */
+  goal: GoalSummary | null;
   summary: { overview: string; home: string[]; classroom: string[] } | null;
 }
 
@@ -130,6 +133,8 @@ interface ReportUser {
   _id: Types.ObjectId;
   displayName: string;
   gradeLevel?: string | null;
+  weeklyGoal?: number | null;
+  goalHistory?: ReadonlyArray<GoalEntry> | null;
 }
 
 /** Everything in the report except the AI summary. */
@@ -138,11 +143,12 @@ export async function buildReport(user: ReportUser, periodDays: number, tz: stri
   const from = new Date(to.getTime() - periodDays * 24 * 60 * 60 * 1000);
   const range = { userId: user._id, createdAt: { $gte: from, $lte: to } };
 
-  const [writings, runs, inki, help] = await Promise.all([
+  const [writings, runs, inki, help, goal] = await Promise.all([
     Writing.find(range).sort({ createdAt: -1 }).limit(MAX_DOCS).select("type title content wordCount activeSeconds createdAt").lean(),
     FeedbackRun.find(range).sort({ createdAt: 1 }).limit(MAX_DOCS).lean(),
     InkiQuestion.find({ ...range, blocked: false }).limit(MAX_DOCS).lean(),
     HelpEvent.find(range).limit(MAX_DOCS).lean(),
+    user.goalHistory?.length ? goalSummaryFor(user, tz) : Promise.resolve(null),
   ]);
 
   // --- time ---
@@ -249,6 +255,7 @@ export async function buildReport(user: ReportUser, periodDays: number, tz: stri
       topIssues,
       inkiChecks: [...checks.entries()].map(([element, v]) => ({ label: ELEMENT_LABEL[element], ...v })),
     },
+    goal,
     summary: null,
   };
 }
