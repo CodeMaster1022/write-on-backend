@@ -6,6 +6,7 @@ import { chatJson, isFlagged } from "../lib/openai.js";
 import { startOfToday, timeZoneOf } from "../lib/time.js";
 import { requireAuth } from "../middleware/auth.js";
 import { HttpError } from "../middleware/error.js";
+import { inkiLimiter } from "../middleware/rate-limit.js";
 import { INKI_ELEMENTS, INKI_VERDICTS, InkiQuestion, type InkiElement } from "../models/InkiQuestion.js";
 import { WordBankEntry } from "../models/WordBankEntry.js";
 import { WRITING_TYPES } from "../models/Writing.js";
@@ -92,7 +93,7 @@ const defineResultSchema = z.object({
   example: z.string().max(300),
 });
 
-inkiRouter.post("/define", async (req, res) => {
+inkiRouter.post("/define", inkiLimiter, async (req, res) => {
   const { term, writingType } = defineSchema.parse(req.body);
   const u = await requireQuestionLeft(req);
   const remaining = u.remaining - 1;
@@ -191,7 +192,7 @@ const checkResultSchema = z.object({
   answer: z.string().min(1).max(800),
 });
 
-inkiRouter.post("/check", async (req, res) => {
+inkiRouter.post("/check", inkiLimiter, async (req, res) => {
   const body = checkSchema.parse(req.body);
   const u = await requireQuestionLeft(req);
   const remaining = u.remaining - 1;

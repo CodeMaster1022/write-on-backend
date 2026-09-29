@@ -3,13 +3,18 @@ import { z } from "zod";
 import { env } from "../config/env.js";
 import { requireAuth } from "../middleware/auth.js";
 import { HttpError } from "../middleware/error.js";
+import { analyzeLimiter } from "../middleware/rate-limit.js";
 import { chatJson } from "../lib/openai.js";
+import { startOfToday, timeZoneOf } from "../lib/time.js";
 import { FeedbackRun, ISSUE_CATEGORIES } from "../models/FeedbackRun.js";
 import { WRITING_TYPES, type WritingType } from "../models/Writing.js";
 
 export const aiRouter = Router();
 
 aiRouter.use(requireAuth);
+
+/** Generous enough for regenerate-and-recheck loops across a few pieces, but a hard cap on OpenAI spend per student. */
+const ANALYZE_PER_DAY = 40;
 
 const bodySchema = z.object({
   type: z.enum(WRITING_TYPES),
@@ -128,12 +133,24 @@ function tidy(feedback: Feedback, content: string, type: WritingType): Feedback 
  * "Use AI to analyze for improvements" — operates on the in-progress draft
  * text from DraftReview, before it's ever saved as a Writing.
  */
-aiRouter.post("/analyze", async (req, res) => {
+aiRouter.post("/analyze", analyzeLimiter, async (req, res) => {
   if (!env.OPENAI_API_KEY) {
     throw new HttpError(503, "AI feedback isn't set up yet. Add OPENAI_API_KEY to the server .env file.");
   }
 
   const { type, content } = bodySchema.parse(req.body);
+
+  // Only successful runs are recorded, so failed OpenAI calls don't eat the allowance.
+  const usedToday = await FeedbackRun.countDocuments({
+    userId: req.user!._id,
+    createdAt: { $gte: startOfToday(timeZoneOf(req)) },
+  });
+  if (usedToday >= ANALYZE_PER_DAY) {
+    throw new HttpError(429, "You've used all of today's AI feedback checks. Keep writing — it resets tomorrow!", {
+      limit: ANALYZE_PER_DAY,
+      remaining: 0,
+    });
+  }
 
   const raw = await chatJson(
     {

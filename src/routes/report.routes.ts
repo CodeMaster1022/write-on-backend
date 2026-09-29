@@ -7,6 +7,7 @@ import { reportDocument, reportDocx, reportEmail } from "../lib/report-export.js
 import { startOfToday, timeZoneOf } from "../lib/time.js";
 import { requireAuth } from "../middleware/auth.js";
 import { HttpError } from "../middleware/error.js";
+import { reportLimiter, sharedReportLimiter } from "../middleware/rate-limit.js";
 import { ReportEmail, ReportShare } from "../models/ReportShare.js";
 import { User } from "../models/User.js";
 
@@ -38,14 +39,14 @@ function sendDocx(res: Response, buffer: Buffer, report: Report) {
 // The student's own report
 // ---------------------------------------------------------------------------
 
-reportRouter.get("/me", requireAuth, async (req, res) => {
+reportRouter.get("/me", requireAuth, reportLimiter, async (req, res) => {
   const { days } = periodSchema.parse(req.query);
   const tz = timeZoneOf(req);
   const report = await withSummary(req.user!, await buildReport(req.user!, days, tz));
   res.json({ report, document: reportDocument(report, tz) });
 });
 
-reportRouter.get("/me.docx", requireAuth, async (req, res) => {
+reportRouter.get("/me.docx", requireAuth, reportLimiter, async (req, res) => {
   const { days } = periodSchema.parse(req.query);
   const tz = timeZoneOf(req);
   const report = await withSummary(req.user!, await buildReport(req.user!, days, tz));
@@ -56,7 +57,7 @@ const emailSchema = periodSchema.extend({
   to: z.string().trim().toLowerCase().email("That email doesn't look right.").max(160),
 });
 
-reportRouter.post("/email", requireAuth, async (req, res) => {
+reportRouter.post("/email", requireAuth, reportLimiter, async (req, res) => {
   const { to, days } = emailSchema.parse(req.body);
   const tz = timeZoneOf(req);
 
@@ -87,7 +88,7 @@ function activeShareFilter(userId: unknown) {
   return { userId, revokedAt: null, expiresAt: { $gt: new Date() } };
 }
 
-reportRouter.get("/shares", requireAuth, async (req, res) => {
+reportRouter.get("/shares", requireAuth, reportLimiter, async (req, res) => {
   const shares = await ReportShare.find(activeShareFilter(req.user!._id)).sort({ createdAt: -1 }).lean();
   res.json({
     shares: shares.map((s) => ({
@@ -99,7 +100,7 @@ reportRouter.get("/shares", requireAuth, async (req, res) => {
   });
 });
 
-reportRouter.post("/shares", requireAuth, async (req, res) => {
+reportRouter.post("/shares", requireAuth, reportLimiter, async (req, res) => {
   const { days } = periodSchema.parse(req.body ?? {});
 
   const active = await ReportShare.countDocuments(activeShareFilter(req.user!._id));
@@ -120,7 +121,7 @@ reportRouter.post("/shares", requireAuth, async (req, res) => {
   res.status(201).json({ id: share.id as string, token, periodDays: days, expiresAt: share.expiresAt });
 });
 
-reportRouter.delete("/shares/:id", requireAuth, async (req, res) => {
+reportRouter.delete("/shares/:id", requireAuth, reportLimiter, async (req, res) => {
   const id = String(req.params.id);
   if (!/^[a-f0-9]{24}$/.test(id)) throw new HttpError(404, "That link was already turned off.");
   const result = await ReportShare.updateOne(
@@ -154,14 +155,14 @@ function privateHeaders(res: Response) {
   res.setHeader("X-Robots-Tag", "noindex, nofollow");
 }
 
-reportRouter.get("/shared/:token", async (req, res) => {
+reportRouter.get("/shared/:token", sharedReportLimiter, async (req, res) => {
   privateHeaders(res);
-  const { share, report, tz } = await loadShared(req.params.token);
+  const { share, report, tz } = await loadShared(String(req.params.token));
   res.json({ report, document: reportDocument(report, tz), expiresAt: share.expiresAt });
 });
 
-reportRouter.get("/shared/:token/docx", async (req, res) => {
+reportRouter.get("/shared/:token/docx", sharedReportLimiter, async (req, res) => {
   privateHeaders(res);
-  const { report, tz } = await loadShared(req.params.token);
+  const { report, tz } = await loadShared(String(req.params.token));
   sendDocx(res, await reportDocx(report, tz), report);
 });

@@ -98,17 +98,40 @@ adminRouter.patch("/contests/:id", async (req, res) => {
   const contest = await requireContest(req.params.id);
   const body = contestFields.partial().parse(req.body);
 
+  const status = contestStatus(contest);
+  if (status === "announced") {
+    throw new HttpError(400, "Winners were announced, so this contest can't be edited anymore.");
+  }
+
   const hasEntries = (await ContestEntry.countDocuments({ contestId: contest._id })) > 0;
   if (hasEntries && (body.writingType !== undefined || body.prizeKey !== undefined)) {
     throw new HttpError(400, "Students have already entered, so the writing type and prize can't change.");
+  }
+  // Entries were written against the questions as they stood; changing them
+  // would leave those entries answering questions nobody can see anymore.
+  if (hasEntries && body.steps !== undefined && stepsChanged(contest.steps, body.steps)) {
+    throw new HttpError(400, "Students have already entered, so the steps can't change.");
   }
   if (body.prizeKey !== undefined) await requirePrize(body.prizeKey);
 
   contest.set(body);
   if (contest.endsAt <= contest.startsAt) throw new HttpError(400, "The end date needs to be after the start date.");
+  // Once closed, the end date can't move back into the future — that would
+  // quietly reopen a contest that may already be half-judged.
+  if (status === "judging" && contest.endsAt > new Date()) {
+    throw new HttpError(400, "This contest has closed. It can't be reopened.");
+  }
   await contest.save();
   res.json({ ok: true });
 });
+
+function stepsChanged(
+  current: { question: string; example?: string | null }[],
+  next: { question: string; example: string }[],
+): boolean {
+  if (current.length !== next.length) return true;
+  return current.some((s, i) => s.question !== next[i]!.question || (s.example ?? "") !== next[i]!.example);
+}
 
 const pageSchema = z.object({ page: z.coerce.number().int().min(1).default(1) });
 
@@ -154,8 +177,17 @@ adminRouter.get("/contests/:id/entries", async (req, res) => {
 
 const winnerSchema = z.object({ isWinner: z.boolean() });
 
+/**
+ * Only while judging (closed, not yet announced). Earlier, a student could
+ * still swap their entry and keep the winner flag; later, changing winners
+ * would trigger fresh celebrations for a result students already saw.
+ */
 adminRouter.post("/contests/:id/entries/:entryId/winner", async (req, res) => {
   const contest = await requireContest(req.params.id);
+  const status = contestStatus(contest);
+  if (status === "announced") throw new HttpError(400, "Winners were already announced and can't be changed.");
+  if (status !== "judging") throw new HttpError(400, "Winners can be picked once the contest has closed.");
+
   const entryId = idParam(req.params.entryId, "We couldn't find that entry.");
   const { isWinner } = winnerSchema.parse(req.body);
 
@@ -182,9 +214,16 @@ adminRouter.post("/contests/:id/announce", async (req, res) => {
   res.json({ ok: true, winners });
 });
 
-/** Removes a contest and its entries. Students keep the prize they received and their writing. */
+/**
+ * Removes a contest and its entries. Students keep the prize they received
+ * and their writing. Announced contests stay: their winner badges are
+ * already on students' pieces and closet items.
+ */
 adminRouter.delete("/contests/:id", async (req, res) => {
   const contest = await requireContest(req.params.id);
+  if (contestStatus(contest) === "announced") {
+    throw new HttpError(400, "Winners were announced, so this contest can't be deleted.");
+  }
   const { deletedCount } = await ContestEntry.deleteMany({ contestId: contest._id });
   await contest.deleteOne();
   res.json({ ok: true, entriesRemoved: deletedCount });

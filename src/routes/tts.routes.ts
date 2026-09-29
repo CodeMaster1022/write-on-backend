@@ -6,6 +6,7 @@ import { z } from "zod";
 import { env } from "../config/env.js";
 import { requireAuth } from "../middleware/auth.js";
 import { HttpError } from "../middleware/error.js";
+import { ttsLimiter } from "../middleware/rate-limit.js";
 
 export const ttsRouter = Router();
 
@@ -30,7 +31,7 @@ const bodySchema = z.object({
  * particular student's essay) still gets cached, it just won't get a second
  * hit unless the exact same text is read again.
  */
-ttsRouter.post("/", async (req, res) => {
+ttsRouter.post("/", ttsLimiter, async (req, res) => {
   if (!env.OPENAI_API_KEY) {
     throw new HttpError(503, "Read-aloud isn't set up yet. Add OPENAI_API_KEY to the server .env file.");
   }

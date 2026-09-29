@@ -30,6 +30,10 @@ const helmet = helmetImport as unknown as (options?: Readonly<HelmetOptions>) =>
 export function createApp() {
   const app = express();
 
+  // One proxy hop in front of us in production (Vercel, or nginx on the VPS),
+  // so req.ip is the real client for the IP-keyed rate limiter.
+  app.set("trust proxy", 1);
+
   app.use(helmet());
   app.use(
     cors({

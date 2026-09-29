@@ -11,7 +11,6 @@ const registerSchema = z.object({
   displayName: z.string().trim().min(1, "Tell us your name.").max(60),
   email: z.string().trim().toLowerCase().email("That email doesn't look right."),
   password: z.string().min(8, "Use at least 8 characters."),
-  role: z.enum(["student", "teacher"]).default("student"),
   gradeLevel: z.enum(GRADES).optional(),
   classCode: z.string().trim().toUpperCase().max(12).optional(),
 });
@@ -26,7 +25,9 @@ authRouter.post("/register", async (req, res) => {
     displayName: body.displayName,
     email: body.email,
     passwordHash: await hashPassword(body.password),
-    role: body.role,
+    // Teacher accounts aren't self-serve: a teacher role can read every
+    // student sharing a class code, so it's only granted by hand.
+    role: "student",
     gradeLevel: body.gradeLevel,
     classCode: body.classCode,
     isGuest: false,
