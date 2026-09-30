@@ -29,7 +29,7 @@ const AREA_LABEL: Record<FeedbackArea, string> = {
   flow: "Flow",
 };
 
-const ISSUE_LABEL: Record<IssueCategory, string> = {
+export const ISSUE_LABEL: Record<IssueCategory, string> = {
   capitalization: "Capital letters",
   punctuation: "Punctuation",
   spelling: "Spelling",
@@ -49,7 +49,7 @@ const ISSUE_LABEL: Record<IssueCategory, string> = {
   other: "Other",
 };
 
-const ELEMENT_LABEL: Record<InkiElement, string> = {
+export const ELEMENT_LABEL: Record<InkiElement, string> = {
   answered_question: "Answering the question",
   evidence: "Using enough evidence",
   transitions: "Using transition words",

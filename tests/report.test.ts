@@ -1,6 +1,6 @@
 import { beforeAll, describe, expect, it } from "vitest";
 import { ReportShare } from "../src/models/ReportShare.js";
-import { fakeOpenAi } from "./fake-network.js";
+import { fakeOpenAi, fakeResend } from "./fake-network.js";
 import { api, bearer, saveWriting, seedBasics, signUp } from "./helpers.js";
 
 beforeAll(seedBasics);
@@ -87,9 +87,21 @@ describe("report share links", () => {
 });
 
 describe("emailing a report", () => {
-  it("explains that email isn't set up yet", async () => {
-    const student = await signUp();
-    const res = await api().post("/api/report/email").set(bearer(student.token)).send({ to: "parent@test.com", days: 7 });
-    expect(res.status).toBe(503);
+  it("sends the report with the Word file, up to 5 a day", async () => {
+    const student = await signUp({ displayName: "Lena" });
+    await saveWriting(student.token, { type: "paragraph", content: "A piece.", activeSeconds: 60 });
+    for (let i = 0; i < 5; i++) {
+      fakeOpenAi.chatReplies.push(summaryReply);
+      const res = await api().post("/api/report/email").set(bearer(student.token)).send({ to: "parent@test.com", days: 7 });
+      expect(res.status).toBe(204);
+    }
+    const mail = fakeResend.sent[0]!;
+    expect(mail.to).toEqual(["parent@test.com"]);
+    expect(mail.subject).toContain("Lena");
+    expect(mail.attachments?.[0]?.filename).toMatch(/.docx$/);
+
+    const sixth = await api().post("/api/report/email").set(bearer(student.token)).send({ to: "parent@test.com", days: 7 });
+    expect(sixth.status).toBe(429);
+    expect(fakeResend.sent).toHaveLength(5);
   });
 });

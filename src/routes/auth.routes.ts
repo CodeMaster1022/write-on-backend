@@ -1,6 +1,12 @@
+import { createHash, randomBytes } from "node:crypto";
 import { Router } from "express";
+import { rateLimit } from "express-rate-limit";
 import { z } from "zod";
 import { GRADES } from "../config/grades.js";
+import { deleteAccountData } from "../lib/account.js";
+import { sendPasswordReset } from "../lib/password-reset.js";
+import { EmailLog, EmailVerification, PasswordReset } from "../models/PasswordReset.js";
+import { sendVerificationEmail, claimVerificationLink } from "../lib/verification.js";
 import { Contest, ContestEntry } from "../models/Contest.js";
 import { FeedbackRun } from "../models/FeedbackRun.js";
 import { HelpEvent } from "../models/HelpEvent.js";
@@ -38,11 +44,16 @@ authRouter.post("/register", async (req, res) => {
     gradeLevel: body.gradeLevel,
     classCode: body.classCode,
     isGuest: false,
+    emailVerified: false,
   });
 
+  // Students can start writing straight away; the email only has to be confirmed before the app sends email.
+  const verificationEmail = await sendVerificationEmail(user);
+
   res.status(201).json({
-    token: signToken({ sub: user.id, role: user.role }),
+    token: signToken({ sub: user.id, role: user.role, v: user.sessionVersion ?? 0 }),
     user: publicUser(user),
+    verificationEmail,
   });
 });
 
@@ -64,27 +75,7 @@ authRouter.post("/login", async (req, res) => {
   console.log(`[auth] login succeeded (account ${user.id})`);
 
   res.json({
-    token: signToken({ sub: user.id, role: user.role }),
-    user: publicUser(user),
-  });
-});
-
-const guestSchema = z.object({
-  displayName: z.string().trim().min(1).max(60).optional(),
-});
-
-/** Lets a student start writing immediately — matches the MVP's "Continue as Guest". */
-authRouter.post("/guest", async (req, res) => {
-  const body = guestSchema.parse(req.body ?? {});
-
-  const user = await User.create({
-    displayName: body.displayName?.trim() || "Guest Writer",
-    role: "student",
-    isGuest: true,
-  });
-
-  res.status(201).json({
-    token: signToken({ sub: user.id, role: user.role }),
+    token: signToken({ sub: user.id, role: user.role, v: user.sessionVersion ?? 0 }),
     user: publicUser(user),
   });
 });
@@ -136,7 +127,7 @@ authRouter.get("/me/export", requireAuth, async (req, res) => {
       name: user.displayName,
       email: user.email ?? null,
       grade: user.gradeLevel ?? null,
-      accountType: user.isGuest ? "guest" : user.role,
+      accountType: user.role,
       joined: user.createdAt,
       inkDrops: user.inkDrops,
       closetItems: user.ownedItems,
@@ -191,7 +182,7 @@ authRouter.get("/me/export", requireAuth, async (req, res) => {
   res.json(data);
 });
 
-const deleteMeSchema = z.object({ password: z.string().optional() });
+const deleteMeSchema = z.object({ password: z.string().min(1, "Type your password to confirm.") });
 
 /** Deletes the account and everything saved for it. This can't be undone. */
 authRouter.delete("/me", requireAuth, async (req, res) => {
@@ -201,50 +192,111 @@ authRouter.delete("/me", requireAuth, async (req, res) => {
   const user = await User.findById(userId).select("+passwordHash");
   if (!user) throw new HttpError(404, "We couldn't find that account.");
   if (user.isAdmin) throw new HttpError(400, "Admin accounts can't be deleted here. Please contact support.");
-  if (!user.isGuest && !(await user.verifyPassword(body.password ?? ""))) {
+  if (!(await user.verifyPassword(body.password ?? ""))) {
     throw new HttpError(401, "That password doesn't match. Nothing was deleted.");
   }
 
-  await Promise.all([
-    Writing.deleteMany({ userId }),
-    Revision.deleteMany({ userId }),
-    FeedbackRun.deleteMany({ userId }),
-    InkiQuestion.deleteMany({ userId }),
-    HelpEvent.deleteMany({ userId }),
-    ContestEntry.deleteMany({ userId }),
-    ReportShare.deleteMany({ userId }),
-    ReportSummary.deleteMany({ userId }),
-    ReportEmail.deleteMany({ userId }),
-  ]);
-  await user.deleteOne();
+  await deleteAccountData(userId);
 
   console.log(`[auth] account deleted (${String(userId)})`);
   res.status(204).send();
 });
 
-const upgradeSchema = registerSchema.pick({ email: true, password: true, displayName: true }).partial({
-  displayName: true,
+// ---------------------------------------------------------------------------
+// Forgot password
+// ---------------------------------------------------------------------------
+
+const RESET_MINUTES = 60;
+const RESETS_PER_EMAIL_PER_DAY = 3;
+const sha256 = (text: string) => createHash("sha256").update(text).digest("hex");
+
+/** Same answer whether or not an account uses the address, so nobody can use this to find out who has an account. */
+const FORGOT_REPLY = "If an account uses that email, we've sent a link to reset the password. Check your inbox and spam folder.";
+
+// Per network address. A whole classroom can share one school address, so this is generous;
+// the daily cap per email address below is what stops anyone flooding an inbox.
+const tryLimiter = () =>
+  rateLimit({
+    windowMs: 15 * 60_000,
+    limit: 30,
+    standardHeaders: "draft-8",
+    legacyHeaders: false,
+    handler: (_req, _res, next) => next(new HttpError(429, "Too many tries. Please wait a few minutes and try again.")),
+  });
+const forgotLimiter = tryLimiter();
+const resetLimiter = tryLimiter();
+
+const forgotSchema = z.object({ email: z.string().trim().toLowerCase().email("That email doesn't look right.").max(160) });
+
+authRouter.post("/forgot-password", forgotLimiter, async (req, res) => {
+  const { email } = forgotSchema.parse(req.body);
+  const user = await User.findOne({ email, isGuest: false });
+  // The reply is the same whatever happens, so this can't be used to find out who has an account.
+  if (user) await sendPasswordReset(user);
+
+  res.json({ message: FORGOT_REPLY });
 });
 
-/** Turns a guest into a real account, keeping their writing and ink drops. */
-authRouter.post("/claim-guest", requireAuth, async (req, res) => {
-  const body = upgradeSchema.parse(req.body);
-  const user = req.user!;
+const resetSchema = z.object({
+  token: z.string().regex(/^[A-Za-z0-9_-]{43}$/, "This reset link isn't valid. Ask for a new one."),
+  password: z.string().min(8, "Use at least 8 characters."),
+});
 
-  if (!user.isGuest) throw new HttpError(400, "This account is already saved.");
+const LINK_EXPIRED = "This reset link has expired or was already used. Ask for a new one.";
 
-  const taken = await User.findOne({ email: body.email });
-  if (taken) throw new HttpError(409, "An account already uses that email.");
+authRouter.post("/reset-password", resetLimiter, async (req, res) => {
+  const { token, password } = resetSchema.parse(req.body);
 
-  user.email = body.email;
-  user.passwordHash = await hashPassword(body.password);
-  user.isGuest = false;
-  if (body.displayName) user.displayName = body.displayName;
+  // Claim the link in one step, so it can't be used twice at the same moment.
+  const reset = await PasswordReset.findOneAndUpdate(
+    { tokenHash: sha256(token), usedAt: null, expiresAt: { $gt: new Date() } },
+    { usedAt: new Date() },
+  );
+  if (!reset) throw new HttpError(400, LINK_EXPIRED);
 
+  const user = await User.findById(reset.userId);
+  if (!user) throw new HttpError(400, LINK_EXPIRED);
+
+  user.passwordHash = await hashPassword(password);
+  // Every existing session stops working; the new one below carries the new version.
+  user.passwordChangedAt = new Date();
+  user.sessionVersion = (user.sessionVersion ?? 0) + 1;
   await user.save();
+  await PasswordReset.deleteMany({ userId: user._id });
+  console.log(`[auth] password reset (account ${user.id})`);
 
-  res.json({
-    token: signToken({ sub: user.id, role: user.role }),
-    user: publicUser(user),
-  });
+  res.json({ token: signToken({ sub: user.id, role: user.role, v: user.sessionVersion ?? 0 }), user: publicUser(user) });
+});
+
+// ---------------------------------------------------------------------------
+// Confirm email
+// ---------------------------------------------------------------------------
+
+const verifySchema = z.object({
+  token: z.string().regex(/^[A-Za-z0-9_-]{43}$/, "This confirmation link isn't valid. Send a new one from the app."),
+});
+
+/** Opened from the email, possibly on another device, so it doesn't need a signed-in session. */
+authRouter.post("/verify-email", resetLimiter, async (req, res) => {
+  const { token } = verifySchema.parse(req.body);
+  const link = await claimVerificationLink(token);
+  const user = link ? await User.findById(link.userId) : null;
+  // The link only confirms the address it was sent to.
+  if (!link || !user || user.email !== link.email) {
+    throw new HttpError(400, "This confirmation link has expired or was already used. Send a new one from the app.");
+  }
+  if (!user.emailVerified) {
+    user.emailVerified = true;
+    await user.save();
+  }
+  res.json({ ok: true, email: user.email });
+});
+
+authRouter.post("/resend-verification", requireAuth, async (req, res) => {
+  const result = await sendVerificationEmail(req.user!);
+  if (result === "limit") {
+    throw new HttpError(429, "We've sent 3 confirmation emails today. Check your inbox and spam folder, or try again tomorrow.");
+  }
+  if (result === "failed") throw new HttpError(502, "Couldn't send the email right now. Please try again in a few minutes.");
+  res.json({ result, user: publicUser(req.user!) });
 });

@@ -28,6 +28,46 @@ export const fakeOpenAi = {
 
 export const blockedRequests: string[] = [];
 
+export interface SentEmail {
+  from: string;
+  to: string[];
+  subject: string;
+  text: string;
+  html: string;
+  attachments?: { filename: string; content: string }[];
+}
+
+/** Emails the app handed to Resend, newest last. */
+export const fakeResend = {
+  sent: [] as SentEmail[],
+  failNext: false,
+  reset() {
+    this.sent = [];
+    this.failNext = false;
+  },
+};
+
+export interface CloudUpload {
+  publicId: string;
+  apiKey: string;
+  timestamp: string;
+  signature: string;
+  bytes: number;
+}
+
+/** A pretend Cloudinary account named "test-cloud", holding audio by its public id. */
+export const fakeCloud = {
+  files: new Map<string, Buffer>(),
+  uploads: [] as CloudUpload[],
+  /** Every request to Cloudinary fails, as if it were down. */
+  down: false,
+  reset() {
+    this.files.clear();
+    this.uploads = [];
+    this.down = false;
+  },
+};
+
 const json = (data: unknown) => new Response(JSON.stringify(data), { headers: { "Content-Type": "application/json" } });
 
 export async function fakeFetch(input: string | URL | Request, init?: RequestInit): Promise<Response> {
@@ -52,6 +92,39 @@ export async function fakeFetch(input: string | URL | Request, init?: RequestIni
     if (path === "audio/speech") {
       return new Response(new Uint8Array(2048).fill(7), { headers: { "Content-Type": "audio/mpeg" } });
     }
+  }
+
+  if (url.startsWith("https://api.cloudinary.com/v1_1/test-cloud/video/upload")) {
+    if (fakeCloud.down) return new Response("down", { status: 503 });
+    const form = init?.body as FormData;
+    const file = form.get("file") as Blob;
+    const bytes = Buffer.from(await file.arrayBuffer());
+    const publicId = String(form.get("public_id"));
+    fakeCloud.files.set(publicId, bytes);
+    fakeCloud.uploads.push({
+      publicId,
+      apiKey: String(form.get("api_key")),
+      timestamp: String(form.get("timestamp")),
+      signature: String(form.get("signature")),
+      bytes: bytes.length,
+    });
+    return json({ public_id: publicId });
+  }
+
+  if (url.startsWith("https://res.cloudinary.com/test-cloud/video/upload/")) {
+    if (fakeCloud.down) return new Response("down", { status: 503 });
+    const publicId = url.slice("https://res.cloudinary.com/test-cloud/video/upload/".length).replace(/\.mp3$/, "");
+    const file = fakeCloud.files.get(publicId);
+    return file ? new Response(new Uint8Array(file), { headers: { "Content-Type": "audio/mpeg" } }) : new Response("not found", { status: 404 });
+  }
+
+  if (url === "https://api.resend.com/emails") {
+    if (fakeResend.failNext) {
+      fakeResend.failNext = false;
+      return new Response("{\"message\":\"fake failure\"}", { status: 500 });
+    }
+    fakeResend.sent.push(JSON.parse(typeof init?.body === "string" ? init.body : "{}"));
+    return json({ id: `email-${fakeResend.sent.length}` });
   }
 
   blockedRequests.push(url);

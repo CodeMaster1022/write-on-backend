@@ -4,7 +4,7 @@ import os from "node:os";
 import path from "node:path";
 import mongoose from "mongoose";
 import { afterAll, afterEach, beforeAll, beforeEach, expect } from "vitest";
-import { blockedRequests, fakeFetch, fakeOpenAi } from "./fake-network.js";
+import { blockedRequests, fakeCloud, fakeFetch, fakeOpenAi, fakeResend } from "./fake-network.js";
 
 // These settings must be in place before the app is imported, and they win
 // over server/.env, so a test can never reach the real database or services.
@@ -23,7 +23,10 @@ Object.assign(process.env, {
   CLIENT_ORIGIN: "http://localhost:3000",
   OPENAI_API_KEY: "test-openai-key",
   DEEPGRAM_API_KEY: "",
-  EMAIL_API_KEY: "",
+  EMAIL_API_KEY: "test-email-key",
+  CLOUDINARY_URL: "cloudinary://test-key:test-secret@test-cloud",
+  EMAIL_FROM: "Write on! <hello@test.example>",
+  APP_URL: "https://write-on.test",
   TTS_CACHE_DIR: ttsDir,
 });
 
@@ -35,6 +38,8 @@ beforeAll(async () => {
 
 beforeEach(() => {
   fakeOpenAi.reset();
+  fakeResend.reset();
+  fakeCloud.reset();
   blockedRequests.length = 0;
 });
 

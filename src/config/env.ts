@@ -22,6 +22,14 @@ const schema = z.object({
   OPENAI_TTS_VOICE: z.string().default("nova"),
   /** Where read-aloud audio for the app's fixed prompts is kept. Tests point this at a temporary folder. */
   TTS_CACHE_DIR: z.string().optional(),
+  /**
+   * Cloudinary keeps a lasting copy of the read-aloud audio for the app's own instructions, so a
+   * server restart doesn't mean paying to voice them again. Format: cloudinary://<key>:<secret>@<cloud name>
+   */
+  CLOUDINARY_URL: z
+    .string()
+    .optional()
+    .refine((v) => !v || /^cloudinary:\/\/[^:@/]+:[^@/]+@[^/?#]+$/.test(v.trim()), "CLOUDINARY_URL should look like cloudinary://<api key>:<api secret>@<cloud name>"),
 
   // Real-time speech-to-text ("dictate" mic button on answer fields).
   // Get a key at https://console.deepgram.com.
@@ -42,6 +50,8 @@ const schema = z.object({
     .default("false")
     .transform((v) => v === "true"),
   EMAIL_FROM: z.string().default("Write on! <onboarding@resend.dev>"),
+  /** The website address used in links inside emails. Defaults to the first CLIENT_ORIGIN. */
+  APP_URL: z.string().url().optional(),
 });
 
 const parsed = schema.safeParse(process.env);

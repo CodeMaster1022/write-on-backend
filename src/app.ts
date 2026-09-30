@@ -21,6 +21,7 @@ import { inkiRouter } from "./routes/inki.routes.js";
 import { reportRouter } from "./routes/report.routes.js";
 import { contestsRouter } from "./routes/contests.routes.js";
 import { adminRouter } from "./routes/admin.routes.js";
+import { adminUsersRouter } from "./routes/admin-users.routes.js";
 import { progressRouter } from "./routes/progress.routes.js";
 
 // Some build environments (seen on Vercel) resolve helmet's dual CJS/ESM
@@ -74,6 +75,7 @@ export function createApp() {
   app.use("/api/report", reportRouter);
   app.use("/api/contests", contestsRouter);
   app.use("/api/admin", adminRouter);
+  app.use("/api/admin", adminUsersRouter);
   app.use("/api/progress", progressRouter);
   app.use("/api/client-errors", clientErrorsRouter);
 

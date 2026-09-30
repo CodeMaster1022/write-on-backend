@@ -7,6 +7,8 @@ import { HttpError } from "./error.js";
 export interface TokenPayload {
   sub: string;
   role: "student" | "teacher";
+  /** The account's session version when this session started. */
+  v?: number;
 }
 
 declare global {
@@ -43,6 +45,10 @@ export async function requireAuth(req: Request, _res: Response, next: NextFuncti
 
   const user = await User.findById(payload.sub);
   if (!user) throw new HttpError(401, "Account not found.");
+  if (user.isGuest) throw new HttpError(401, "Trying Write on! without an account has changed. Please log in or create an account.");
+  if ((payload.v ?? 0) !== (user.sessionVersion ?? 0)) {
+    throw new HttpError(401, "Your password was changed. Please sign in again.");
+  }
 
   req.user = user;
   next();

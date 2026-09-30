@@ -3,8 +3,9 @@
  * no internet, and two known accounts. Started by the client's Playwright
  * config with `npm run e2e-server`; stops when that process ends.
  */
+import { createServer } from "node:http";
 import { MongoMemoryServer } from "mongodb-memory-server";
-import { blockedRequests, fakeFetch, fakeOpenAi } from "./fake-network.js";
+import { blockedRequests, fakeFetch, fakeOpenAi, fakeResend } from "./fake-network.js";
 
 const PORT = Number(process.env.E2E_API_PORT ?? 4210);
 const mongo = await MongoMemoryServer.create();
@@ -17,7 +18,9 @@ Object.assign(process.env, {
   CLIENT_ORIGIN: process.env.E2E_CLIENT_ORIGIN ?? "http://localhost:3210",
   OPENAI_API_KEY: "e2e-openai-key",
   DEEPGRAM_API_KEY: "",
-  EMAIL_API_KEY: "",
+  EMAIL_API_KEY: "e2e-email-key",
+  EMAIL_FROM: "Write on! <hello@e2e.test>",
+  APP_URL: process.env.E2E_CLIENT_ORIGIN ?? "http://localhost:3210",
   SENTRY_DSN: "",
 });
 globalThis.fetch = fakeFetch as typeof fetch;
@@ -78,6 +81,12 @@ await User.create({
 });
 
 createApp().listen(PORT, () => console.log(`[e2e] API ready on http://localhost:${PORT}`));
+
+// Side door for the tests only: the emails the app "sent", newest last.
+createServer((_req, res) => {
+  res.setHeader("Content-Type", "application/json");
+  res.end(JSON.stringify(fakeResend.sent));
+}).listen(PORT + 1);
 
 // Anything the app tried to fetch from the real internet shows up in the test output.
 setInterval(() => {

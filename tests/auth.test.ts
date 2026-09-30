@@ -72,17 +72,25 @@ describe("sign-up and sign-in", () => {
     expect((await api().get("/api/auth/me").set(bearer("not-a-token"))).status).toBe(401);
   });
 
-  it("lets a guest save their work to a real account", async () => {
-    const guest = await api().post("/api/auth/guest").send({});
-    expect(guest.body.user.isGuest).toBe(true);
-    await saveWriting(guest.body.token, { type: "sentence", content: "A guest sentence." });
+  it("no longer makes accounts for guests", async () => {
+    expect((await api().post("/api/auth/guest").send({})).status).toBe(404);
+    expect((await api().post("/api/auth/claim-guest").send({ email: "a@test.com", password: "Password123!" })).status).toBe(404);
+  });
 
-    const claim = await api()
-      .post("/api/auth/claim-guest")
-      .set(bearer(guest.body.token))
-      .send({ email: "claimed@test.com", password: "Password123!" });
-    expect(claim.status).toBe(200);
-    expect(claim.body.user).toMatchObject({ isGuest: false, email: "claimed@test.com", writingCount: 1 });
+  it("signs out a guest account left over from before, and keeps it out of everything", async () => {
+    const created = await api().post("/api/auth/register").send({ displayName: "Old Guest", email: "old-guest@test.com", password: "Password123!" });
+    await User.collection.updateOne({ email: "old-guest@test.com" }, { $set: { isGuest: true } });
+
+    const res = await api().get("/api/auth/me").set(bearer(created.body.token));
+    expect(res.status).toBe(401);
+    expect(res.body.error).toMatch(/log in or create an account/);
+    expect((await api().post("/api/writings").set(bearer(created.body.token)).send({ type: "sentence", content: "Hi." })).status).toBe(401);
+  });
+
+  it("gives every signed-up student a real account, never a guest one", async () => {
+    const student = await signUp();
+    const me = await api().get("/api/auth/me").set(bearer(student.token));
+    expect(me.body.user).not.toHaveProperty("isGuest");
   });
 });
 
@@ -168,10 +176,11 @@ describe("delete my account", () => {
     expect((await api().post("/api/auth/login").send({ email: user.email, password: user.password })).status).toBe(401);
   });
 
-  it("lets a guest delete without a password", async () => {
-    const guest = await api().post("/api/auth/guest").send({});
-    const res = await api().delete("/api/auth/me").set(bearer(guest.body.token)).send({});
-    expect(res.status).toBe(204);
+  it("always needs the password", async () => {
+    const user = await signUp();
+    expect((await api().delete("/api/auth/me").set(bearer(user.token)).send({})).status).toBe(400);
+    expect((await api().delete("/api/auth/me").set(bearer(user.token)).send({ password: "" })).status).toBe(400);
+    expect(await User.exists({ _id: user.id })).toBeTruthy();
   });
 
   it("does not delete an admin account", async () => {

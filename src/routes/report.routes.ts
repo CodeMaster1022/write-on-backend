@@ -10,6 +10,7 @@ import { HttpError } from "../middleware/error.js";
 import { reportLimiter, sharedReportLimiter } from "../middleware/rate-limit.js";
 import { ReportEmail, ReportShare } from "../models/ReportShare.js";
 import { User } from "../models/User.js";
+import { requireVerifiedEmail } from "../lib/verification.js";
 
 export const reportRouter = Router();
 
@@ -59,6 +60,7 @@ const emailSchema = periodSchema.extend({
 
 reportRouter.post("/email", requireAuth, reportLimiter, async (req, res) => {
   const { to, days } = emailSchema.parse(req.body);
+  requireVerifiedEmail(req.user!);
   const tz = timeZoneOf(req);
 
   const sentToday = await ReportEmail.countDocuments({ userId: req.user!._id, createdAt: { $gte: startOfToday(tz) } });

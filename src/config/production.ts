@@ -9,6 +9,7 @@ export interface ProductionSettings {
   OPENAI_API_KEY?: string;
   SENTRY_DSN?: string;
   EMAIL_API_KEY?: string;
+  CLOUDINARY_URL?: string;
   ALLOW_HTTP: boolean;
 }
 
@@ -56,6 +57,9 @@ export function productionProblems(s: ProductionSettings): { problems: string[];
   if (!s.OPENAI_API_KEY) warnings.push("OPENAI_API_KEY is not set: AI feedback, Ask Inki and read-aloud are off.");
   if (!s.SENTRY_DSN) warnings.push("SENTRY_DSN is not set: errors are only written to the server log, and nobody is alerted.");
   if (!s.EMAIL_API_KEY) warnings.push("EMAIL_API_KEY is not set: report emails can't be sent.");
+  if (!s.CLOUDINARY_URL) {
+    warnings.push("CLOUDINARY_URL is not set: read-aloud audio is only kept on the server's temporary disk, and is voiced (and paid for) again after each restart.");
+  }
 
   return { problems, warnings };
 }

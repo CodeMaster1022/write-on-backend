@@ -16,7 +16,9 @@
     "test:watch": "vitest",
     "e2e-server": "tsx tests/e2e-server.ts",
     "backup": "tsx src/seed/backup.ts",
-    "restore": "tsx src/seed/restore.ts"
+    "restore": "tsx src/seed/restore.ts",
+    "remove-guests": "tsx src/seed/remove-guests.ts",
+    "check-cloudinary": "tsx src/seed/check-cloudinary.ts"
   },
   "dependencies": {
     "@deepgram/sdk": "^5.12.0",

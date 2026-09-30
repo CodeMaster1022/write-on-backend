@@ -68,3 +68,15 @@ export const sharedReportLimiter = limiter({
   byUser: false,
   message: "Too many requests. Please wait a few minutes and try again.",
 });
+
+/**
+ * POST /api/tts/prompt — instructions voiced for visitors who haven't signed in. Keyed by
+ * network address, and generous because a classroom can share one. Copies already saved are
+ * cheap; a separate daily cap limits how many new ones can be made.
+ */
+export const promptTtsLimiter = limiter({
+  windowMs: 10 * MINUTE,
+  limit: 600,
+  byUser: false,
+  message: "Read-aloud needs a short break. Try again in a few minutes.",
+});

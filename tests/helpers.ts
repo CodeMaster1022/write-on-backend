@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import request from "supertest";
 import { createApp } from "../src/app.js";
+import { fakeResend } from "./fake-network.js";
 import { RewardItem } from "../src/models/RewardItem.js";
 import { User } from "../src/models/User.js";
 import { WordBankEntry } from "../src/models/WordBankEntry.js";
@@ -17,13 +18,21 @@ export interface TestUser {
   password: string;
 }
 
-export async function signUp(overrides: { gradeLevel?: string; displayName?: string } = {}): Promise<TestUser> {
+/**
+ * A new student account. Its email is confirmed unless `verified: false`, and the
+ * confirmation email sign-up sends is cleared, so tests only see the emails they cause.
+ */
+export async function signUp(overrides: { gradeLevel?: string; displayName?: string; verified?: boolean } = {}): Promise<TestUser> {
   const email = `student-${randomUUID().slice(0, 8)}@test.com`;
   const password = "Password123!";
   const res = await api()
     .post("/api/auth/register")
     .send({ displayName: overrides.displayName ?? "Sam", email, password, gradeLevel: overrides.gradeLevel ?? "4" });
   if (res.status !== 201) throw new Error(`sign-up failed: ${res.status} ${JSON.stringify(res.body)}`);
+  if (overrides.verified !== false) {
+    await User.updateOne({ _id: res.body.user.id }, { emailVerified: true });
+    fakeResend.sent = fakeResend.sent.filter((m) => !m.to.includes(email));
+  }
   return { token: res.body.token, id: res.body.user.id, email, password };
 }
 

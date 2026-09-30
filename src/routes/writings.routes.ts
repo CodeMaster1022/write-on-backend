@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { Router } from "express";
 import { z } from "zod";
 import { Contest, ContestEntry, contestStatus } from "../models/Contest.js";
@@ -6,6 +7,11 @@ import { MAX_REVISIONS, Revision } from "../models/Revision.js";
 import { REWARD_PER_TYPE, WRITING_TYPES, Writing, countWords } from "../models/Writing.js";
 import { publicUser } from "../models/User.js";
 import { requireAuth } from "../middleware/auth.js";
+import { sendEmail } from "../lib/email.js";
+import { writingCopyEmail } from "../lib/emails.js";
+import { startOfToday, timeZoneOf } from "../lib/time.js";
+import { requireVerifiedEmail } from "../lib/verification.js";
+import { EmailLog } from "../models/PasswordReset.js";
 import { HttpError } from "../middleware/error.js";
 
 export const writingsRouter = Router();
@@ -225,6 +231,33 @@ writingsRouter.patch("/:id", async (req, res) => {
   }
 
   res.json({ writing, versionCount: await Revision.countDocuments({ writingId: writing._id }) });
+});
+
+const COPIES_PER_DAY = 5;
+const emailCopySchema = z.object({ to: z.string().trim().toLowerCase().email("That email doesn't look right.").max(160) });
+
+/** "Email me a copy": sends the piece to an address the student gives. The address isn't stored. */
+writingsRouter.post("/:id/email", async (req, res) => {
+  const { to } = emailCopySchema.parse(req.body);
+  const writing = await findOwn(req);
+  const user = req.user!;
+  requireVerifiedEmail(user);
+  const tz = timeZoneOf(req);
+
+  const sentToday = await EmailLog.countDocuments({ userId: user._id, kind: "writing_copy", createdAt: { $gte: startOfToday(tz) } });
+  if (sentToday >= COPIES_PER_DAY) {
+    throw new HttpError(429, `You can email up to ${COPIES_PER_DAY} copies a day. You can always find your writing in My writing.`);
+  }
+
+  const date = writing.createdAt.toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric", timeZone: tz });
+  await sendEmail({
+    to,
+    ...writingCopyEmail({ studentName: user.displayName, type: writing.type, title: writing.title, content: writing.content, date }),
+    failMessage: "Couldn't send that email right now. Your writing is saved in My writing.",
+  });
+  await EmailLog.create({ userId: user._id, kind: "writing_copy", toHash: createHash("sha256").update(to).digest("hex") });
+
+  res.status(204).send();
 });
 
 writingsRouter.delete("/:id", async (req, res) => {

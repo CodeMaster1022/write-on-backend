@@ -18,6 +18,7 @@ const userSchema = new Schema(
     },
     passwordHash: { type: String, select: false },
     role: { type: String, enum: ["student", "teacher"], default: "student", index: true },
+    /** Only on accounts made before guests stopped having accounts. They're signed out and cleaned up with `npm run remove-guests`. */
     isGuest: { type: Boolean, default: false },
     /** Can run contests. Only set with `npm run make-admin`, never through the API. */
     isAdmin: { type: Boolean, default: false },
@@ -38,6 +39,17 @@ const userSchema = new Schema(
 
     writingCount: { type: Number, default: 0, min: 0 },
     lastWroteAt: { type: Date, default: null },
+
+    /**
+     * Whether the account's email is confirmed. Defaults to true so accounts made
+     * before verification existed count as confirmed; sign-up sets it to false.
+     */
+    emailVerified: { type: Boolean, default: true },
+
+    /** When the password was last reset. */
+    passwordChangedAt: { type: Date, default: null },
+    /** Every session carries this number. Raising it (on a password reset) signs out every device at once. */
+    sessionVersion: { type: Number, default: 0 },
 
     /** Pieces the student wants to finish each week, or null for no goal. */
     weeklyGoal: { type: Number, min: 1, max: 14, default: null },
@@ -80,8 +92,8 @@ export function publicUser(user: UserDoc) {
     id: user.id as string,
     displayName: user.displayName,
     email: user.email ?? null,
+    emailVerified: user.emailVerified ?? true,
     role: user.role,
-    isGuest: user.isGuest,
     isAdmin: user.isAdmin ?? false,
     gradeLevel: user.gradeLevel ?? null,
     classCode: user.classCode ?? null,

@@ -13,12 +13,14 @@ export async function sendEmail(msg: {
   text: string;
   html: string;
   attachments?: Attachment[];
+  /** Shown to the person if sending fails. */
+  failMessage?: string;
 }): Promise<void> {
   if (!env.EMAIL_API_KEY) {
     throw new HttpError(503, "Email isn't set up yet. Add EMAIL_API_KEY to the server .env file.");
   }
 
-  const failMessage = "Couldn't send that email right now. Please try again, or download the report instead.";
+  const failMessage = msg.failMessage ?? "Couldn't send that email right now. Please try again, or download the report instead.";
 
   let res: Response;
   try {
@@ -42,4 +44,13 @@ export async function sendEmail(msg: {
     console.error("[email] Resend request failed", res.status, await res.text().catch(() => ""));
     throw new HttpError(502, failMessage);
   }
+}
+
+/** The website address for links in emails, without a trailing slash. */
+export function appUrl(): string {
+  return (env.APP_URL ?? env.CLIENT_ORIGIN.split(",")[0]!.trim()).replace(/\/+$/, "");
+}
+
+export function escapeHtml(text: string): string {
+  return text.replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", "\"": "&quot;", "'": "&#39;" })[c]!);
 }

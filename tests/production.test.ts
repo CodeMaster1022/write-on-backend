@@ -8,6 +8,7 @@ const good: ProductionSettings = {
   OPENAI_API_KEY: "sk-live",
   SENTRY_DSN: "https://key@o1.ingest.sentry.io/1",
   EMAIL_API_KEY: "re_live",
+  CLOUDINARY_URL: "cloudinary://key:secret@live-cloud",
   ALLOW_HTTP: false,
 };
 
@@ -47,8 +48,9 @@ describe("production settings check", () => {
   });
 
   it("warns, without stopping, when optional services aren't set up", () => {
-    const { problems, warnings } = productionProblems({ ...good, OPENAI_API_KEY: "", SENTRY_DSN: undefined, EMAIL_API_KEY: "" });
+    const { problems, warnings } = productionProblems({ ...good, OPENAI_API_KEY: "", SENTRY_DSN: undefined, EMAIL_API_KEY: "", CLOUDINARY_URL: undefined });
     expect(problems).toEqual([]);
-    expect(warnings).toHaveLength(3);
+    expect(warnings).toHaveLength(4);
+    expect(warnings.join(" ")).toMatch(/CLOUDINARY_URL/);
   });
 });

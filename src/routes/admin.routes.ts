@@ -1,6 +1,7 @@
 import { Router } from "express";
 import { z } from "zod";
 import { normalizeGrade } from "../config/grades.js";
+import { logAdminAction } from "../lib/audit.js";
 import { requireAdmin, requireAuth } from "../middleware/auth.js";
 import { HttpError } from "../middleware/error.js";
 import { Contest, ContestEntry, MAX_CONTEST_STEPS, contestStatus } from "../models/Contest.js";
@@ -91,6 +92,7 @@ adminRouter.post("/contests", async (req, res) => {
   const body = createSchema.parse(req.body);
   await requirePrize(body.prizeKey);
   const contest = await Contest.create({ ...body, createdBy: req.user!._id });
+  await logAdminAction(req.user!._id, "contest_create", { contestTitle: contest.title });
   res.status(201).json({ id: contest.id as string });
 });
 
@@ -122,6 +124,7 @@ adminRouter.patch("/contests/:id", async (req, res) => {
     throw new HttpError(400, "This contest has closed. It can't be reopened.");
   }
   await contest.save();
+  await logAdminAction(req.user!._id, "contest_update", { contestTitle: contest.title });
   res.json({ ok: true });
 });
 
@@ -196,6 +199,7 @@ adminRouter.post("/contests/:id/entries/:entryId/winner", async (req, res) => {
     isWinner ? { isWinner: true } : { isWinner: false, winnerSeenAt: null },
   );
   if (result.matchedCount === 0) throw new HttpError(404, "We couldn't find that entry.");
+  await logAdminAction(req.user!._id, isWinner ? "contest_winner_mark" : "contest_winner_unmark", { contestTitle: contest.title });
   res.json({ ok: true });
 });
 
@@ -211,6 +215,7 @@ adminRouter.post("/contests/:id/announce", async (req, res) => {
 
   contest.announcedAt = new Date();
   await contest.save();
+  await logAdminAction(req.user!._id, "contest_announce", { contestTitle: contest.title, note: `${winners} ${winners === 1 ? "winner" : "winners"}` });
   res.json({ ok: true, winners });
 });
 
@@ -226,5 +231,6 @@ adminRouter.delete("/contests/:id", async (req, res) => {
   }
   const { deletedCount } = await ContestEntry.deleteMany({ contestId: contest._id });
   await contest.deleteOne();
+  await logAdminAction(req.user!._id, "contest_delete", { contestTitle: contest.title, note: `${deletedCount} ${deletedCount === 1 ? "entry" : "entries"} removed` });
   res.json({ ok: true, entriesRemoved: deletedCount });
 });
