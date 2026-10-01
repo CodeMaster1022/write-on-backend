@@ -68,6 +68,25 @@ export const fakeCloud = {
   },
 };
 
+export interface StripeCall {
+  method: string;
+  path: string;
+  params: Record<string, string>;
+}
+
+/** A pretend Stripe: records every request, hands back ids and page addresses, and holds the subscriptions a test puts in it. */
+export const fakeStripe = {
+  calls: [] as StripeCall[],
+  subscriptions: new Map<string, Record<string, unknown>>(),
+  /** Every request to Stripe fails, as if it were down. */
+  down: false,
+  reset() {
+    this.calls = [];
+    this.subscriptions.clear();
+    this.down = false;
+  },
+};
+
 const json = (data: unknown) => new Response(JSON.stringify(data), { headers: { "Content-Type": "application/json" } });
 
 export async function fakeFetch(input: string | URL | Request, init?: RequestInit): Promise<Response> {
@@ -116,6 +135,23 @@ export async function fakeFetch(input: string | URL | Request, init?: RequestIni
     const publicId = url.slice("https://res.cloudinary.com/test-cloud/video/upload/".length).replace(/\.mp3$/, "");
     const file = fakeCloud.files.get(publicId);
     return file ? new Response(new Uint8Array(file), { headers: { "Content-Type": "audio/mpeg" } }) : new Response("not found", { status: 404 });
+  }
+
+  if (url.startsWith("https://api.stripe.com/v1/")) {
+    if (fakeStripe.down) return new Response("{\"error\":{\"message\":\"down\"}}", { status: 503 });
+    const path = url.slice("https://api.stripe.com/v1/".length);
+    const method = init?.method ?? "GET";
+    const params = Object.fromEntries(new URLSearchParams(typeof init?.body === "string" ? init.body : ""));
+    fakeStripe.calls.push({ method, path, params });
+    const n = fakeStripe.calls.length;
+    if (path === "customers") return json({ id: `cus_test${n}`, email: params.email });
+    if (path === "checkout/sessions") return json({ id: `cs_test${n}`, url: `https://checkout.stripe.test/pay/cs_test${n}` });
+    if (path === "billing_portal/sessions") return json({ id: `bps_test${n}`, url: `https://billing.stripe.test/session/bps_test${n}` });
+    if (path.startsWith("subscriptions/")) {
+      const sub = fakeStripe.subscriptions.get(decodeURIComponent(path.slice("subscriptions/".length)));
+      return sub ? json(sub) : new Response("{\"error\":{\"message\":\"no such subscription\"}}", { status: 404 });
+    }
+    return new Response("{\"error\":{\"message\":\"unexpected\"}}", { status: 400 });
   }
 
   if (url === "https://api.resend.com/emails") {

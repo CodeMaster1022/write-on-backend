@@ -5,7 +5,7 @@ import { env } from "../config/env.js";
 import { normalizeGrade } from "../config/grades.js";
 import { FeedbackRun, type FeedbackArea, type IssueCategory } from "../models/FeedbackRun.js";
 import { HelpEvent } from "../models/HelpEvent.js";
-import { InkiQuestion, type InkiElement } from "../models/InkiQuestion.js";
+import { InkiQuestion, isInkiElement, type InkiElement } from "../models/InkiQuestion.js";
 import { ReportSummary } from "../models/ReportShare.js";
 import { WRITING_TYPES, Writing, type WritingType } from "../models/Writing.js";
 import { chatJson } from "./openai.js";
@@ -53,7 +53,6 @@ export const ELEMENT_LABEL: Record<InkiElement, string> = {
   answered_question: "Answering the question",
   evidence: "Using enough evidence",
   transitions: "Using transition words",
-  tone: "Using a school tone",
 };
 
 /** Worded the way the student asked it in helper Inki's dropdown. */
@@ -61,7 +60,6 @@ const CHECK_QUESTION: Record<InkiElement, string> = {
   answered_question: "Did I answer the question?",
   evidence: "Did I use enough evidence?",
   transitions: "Did I use transition words?",
-  tone: "Is my tone right for school?",
 };
 
 const HELP_TOPIC_LABEL: Record<string, string> = {
@@ -188,7 +186,7 @@ export async function buildReport(user: ReportUser, periodDays: number, tz: stri
   };
   for (const q of inki) {
     if (q.kind === "define" && q.term) bump(`define:${q.term}`, `What "${q.term}" means`);
-    if (q.kind === "check" && q.element) bump(`check:${q.element}`, CHECK_QUESTION[q.element]);
+    if (q.kind === "check" && isInkiElement(q.element)) bump(`check:${q.element}`, CHECK_QUESTION[q.element]);
   }
   for (const h of help) {
     if (h.kind === "define") bump(`define:${h.topic}`, `What "${h.topic}" means`);
@@ -217,7 +215,7 @@ export async function buildReport(user: ReportUser, periodDays: number, tz: stri
 
   const checks = new Map<InkiElement, { total: number; notYet: number }>();
   for (const q of inki) {
-    if (q.kind !== "check" || !q.element) continue;
+    if (q.kind !== "check" || !isInkiElement(q.element)) continue;
     const entry = checks.get(q.element) ?? { total: 0, notYet: 0 };
     entry.total += 1;
     if (q.verdict === "not_yet") entry.notYet += 1;

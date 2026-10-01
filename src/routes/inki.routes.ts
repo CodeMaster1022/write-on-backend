@@ -3,6 +3,7 @@ import { z } from "zod";
 import { env } from "../config/env.js";
 import { inkiDailyLimit, normalizeGrade } from "../config/grades.js";
 import { chatJson, isFlagged } from "../lib/openai.js";
+import { freeLeft, planFor, requirePremiumOrFreeUse } from "../lib/plan.js";
 import { startOfToday, timeZoneOf } from "../lib/time.js";
 import { requireAuth } from "../middleware/auth.js";
 import { HttpError } from "../middleware/error.js";
@@ -38,9 +39,12 @@ async function requireQuestionLeft(req: Request) {
   if (!env.OPENAI_API_KEY) {
     throw new HttpError(503, "Inki isn't set up yet. Add OPENAI_API_KEY to the server .env file.");
   }
+  // Premium, or one of this week's free questions; then the daily allowance by grade.
+  const { freeLeft: weekLeft } = await requirePremiumOrFreeUse(req, "inki", timeZoneOf(req));
   const u = await usage(req);
   if (u.remaining <= 0) throw new HttpError(429, LIMIT_REPLY, { limit: u.limit, remaining: 0 });
-  return u;
+  // The free plan's weekly taste can be smaller than today's allowance.
+  return weekLeft === null ? u : { ...u, remaining: Math.min(u.remaining, weekLeft) };
 }
 
 function gradeNote(gradeLevel: string | null | undefined): string {
@@ -50,7 +54,14 @@ function gradeNote(gradeLevel: string | null | undefined): string {
 }
 
 inkiRouter.get("/status", async (req, res) => {
-  res.json(await usage(req));
+  const u = await usage(req);
+  const plan = await planFor(req.user!);
+  if (plan.plan === "premium") {
+    res.json({ ...u, plan: "premium" });
+    return;
+  }
+  const week = (await freeLeft(req.user!, timeZoneOf(req))).inkiQuestions;
+  res.json({ ...u, remaining: Math.min(u.remaining, week), plan: "free", freeLeft: week });
 });
 
 // ---------------------------------------------------------------------------
@@ -163,8 +174,6 @@ const ELEMENT_TASK: Record<InkiElement, string> = {
     "Check whether the writing backs up its main idea with reasons, examples, or details. Name one piece of support that works well, and say where more support would help.",
   transitions:
     "Check whether the writing uses transition words (like first, next, then, also, because, however, for example, finally, in conclusion). Quote the ones they used. If there are few or none, suggest one or two transition words and where they could go.",
-  tone:
-    "Check whether the tone is right for school: polite and clear, with no slang, texting shortcuts, or rude words. Point out anything that sounds too casual, and name a more school-like word if helpful.",
 };
 
 const CHECK_SYSTEM = `You are Inki, a friendly octopus who helps children with writing. A student asked you to check ONE thing about their own writing.

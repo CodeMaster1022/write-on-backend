@@ -23,6 +23,10 @@ import { contestsRouter } from "./routes/contests.routes.js";
 import { adminRouter } from "./routes/admin.routes.js";
 import { adminUsersRouter } from "./routes/admin-users.routes.js";
 import { progressRouter } from "./routes/progress.routes.js";
+import { lessonsRouter } from "./routes/lessons.routes.js";
+import { adminLessonsRouter } from "./routes/admin-lessons.routes.js";
+import { jobsRouter } from "./routes/jobs.routes.js";
+import { billingRouter, stripeWebhookRouter } from "./routes/billing.routes.js";
 
 // Some build environments (seen on Vercel) resolve helmet's dual CJS/ESM
 // type declarations to the module namespace instead of unwrapping its
@@ -54,6 +58,8 @@ export function createApp() {
       credentials: true,
     }),
   );
+  // Stripe signs the raw bytes of its webhook, so that one route keeps the body unparsed.
+  app.use("/api/billing/webhook", express.raw({ type: "*/*", limit: "1mb" }), stripeWebhookRouter);
   app.use(express.json({ limit: "200kb" }));
   if (env.NODE_ENV !== "test") app.use(morgan(isProd ? "combined" : "dev"));
 
@@ -76,6 +82,10 @@ export function createApp() {
   app.use("/api/contests", contestsRouter);
   app.use("/api/admin", adminRouter);
   app.use("/api/admin", adminUsersRouter);
+  app.use("/api/admin", adminLessonsRouter);
+  app.use("/api/lessons", lessonsRouter);
+  app.use("/api/jobs", jobsRouter);
+  app.use("/api/billing", billingRouter);
   app.use("/api/progress", progressRouter);
   app.use("/api/client-errors", clientErrorsRouter);
 

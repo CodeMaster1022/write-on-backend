@@ -2,6 +2,7 @@ import { Router } from "express";
 import { z } from "zod";
 import { normalizeGrade } from "../config/grades.js";
 import { logAdminAction } from "../lib/audit.js";
+import { notifyContestResults } from "../lib/notify.js";
 import { requireAdmin, requireAuth } from "../middleware/auth.js";
 import { HttpError } from "../middleware/error.js";
 import { Contest, ContestEntry, MAX_CONTEST_STEPS, contestStatus } from "../models/Contest.js";
@@ -216,7 +217,9 @@ adminRouter.post("/contests/:id/announce", async (req, res) => {
   contest.announcedAt = new Date();
   await contest.save();
   await logAdminAction(req.user!._id, "contest_announce", { contestTitle: contest.title, note: `${winners} ${winners === 1 ? "winner" : "winners"}` });
-  res.json({ ok: true, winners });
+  // Every entrant hears the result. A problem sending never undoes the announcement.
+  const emailed = await notifyContestResults(contest._id);
+  res.json({ ok: true, winners, emailed });
 });
 
 /**

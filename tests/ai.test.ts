@@ -118,9 +118,18 @@ describe("Ask Inki: check my writing", () => {
     const res = await api()
       .post("/api/inki/check")
       .set(bearer(student.token))
-      .send({ element: "tone", draft: "Hello there.", writingType: "sentence" });
+      .send({ element: "evidence", draft: "Hello there.", writingType: "paragraph" });
     expect(res.body.blocked).toBe(true);
     expect(res.body.answer).not.toContain("unsuitable");
+  });
+
+  it("no longer offers the school-tone check (the app is K–8)", async () => {
+    const student = await signUp();
+    const res = await api()
+      .post("/api/inki/check")
+      .set(bearer(student.token))
+      .send({ element: "tone", draft: "Hello there.", writingType: "paragraph" });
+    expect(res.status).toBe(400);
   });
 });
 
@@ -131,7 +140,7 @@ describe("Ask Inki: daily limit by grade", () => {
     ["3", 10],
     ["5", 10],
     ["6", 20],
-    ["12", 20],
+    ["8", 20],
   ])("grade %s gets %i questions a day", async (grade, limit) => {
     const student = await signUp({ gradeLevel: grade });
     const res = await api().get("/api/inki/status").set(bearer(student.token));

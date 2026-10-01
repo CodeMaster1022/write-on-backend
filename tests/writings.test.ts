@@ -18,6 +18,45 @@ describe("saving writing", () => {
     expect(essay.body.user.inkDrops).toBe(45);
   });
 
+  it("stops writing the safety filter flags, on save and on edit, and reports the check failing", async () => {
+    const student = await signUp();
+    const piece = await saveWriting(student.token, { type: "sentence", content: "A fine sentence." });
+
+    fakeOpenAi.flagged = true;
+    const save = await api().post("/api/writings").set(bearer(student.token)).send({ type: "sentence", content: "Something unsuitable." });
+    expect(save.status).toBe(400);
+    expect(save.body.error).toContain("isn't right for school");
+    const edit = await api().patch(`/api/writings/${piece._id}`).set(bearer(student.token)).send({ content: "Something unsuitable." });
+    expect(edit.status).toBe(400);
+    // An unchanged piece isn't re-checked (nothing new to read).
+    const sameText = await api().patch(`/api/writings/${piece._id}`).set(bearer(student.token)).send({ activeSeconds: 30 });
+    expect(sameText.status).toBe(200);
+    fakeOpenAi.flagged = false;
+
+    expect((await api().get(`/api/writings/${piece._id}`).set(bearer(student.token))).body.writing.content).toBe("A fine sentence.");
+    // Every save sends the text to the filter, and only the filter.
+    const paths = fakeOpenAi.calls.map((c) => c.path);
+    expect(paths).toContain("moderations");
+    expect(paths).not.toContain("chat/completions");
+  });
+
+  it("stops paying ink drops after 10 rewarded pieces in a day, but keeps saving", async () => {
+    const student = await signUp();
+    for (let i = 0; i < 10; i++) await saveWriting(student.token, { type: "sentence", content: `Piece ${i}.` });
+    const eleventh = await api().post("/api/writings").set(bearer(student.token)).send({ type: "essay", content: "One more." });
+    expect(eleventh.status).toBe(201);
+    expect(eleventh.body).toMatchObject({ inkDropsEarned: 0, rewardCapReached: true });
+    expect(eleventh.body.user).toMatchObject({ inkDrops: 50, writingCount: 11 });
+  });
+
+  it("deleting a piece keeps the ink drops and lowers the piece count", async () => {
+    const student = await signUp();
+    const piece = await saveWriting(student.token, { type: "paragraph", content: "Gone soon." });
+    const res = await api().delete(`/api/writings/${piece._id}`).set(bearer(student.token));
+    expect(res.status).toBe(200);
+    expect(res.body.user).toMatchObject({ inkDrops: 15, writingCount: 0 });
+  });
+
   it("refuses empty writing and impossible writing times", async () => {
     const student = await signUp();
     expect((await api().post("/api/writings").set(bearer(student.token)).send({ type: "sentence", content: "   " })).status).toBe(400);

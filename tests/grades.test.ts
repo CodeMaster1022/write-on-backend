@@ -29,10 +29,19 @@ describe("grade bands", () => {
     ["3", "middle"],
     ["5", "middle"],
     ["6", "oldest"],
-    ["12", "oldest"],
+    ["8", "oldest"],
     ["2nd grade", "youngest"],
   ])("grade %s is in the %s band", (grade, band) => {
     expect(gradeBand(grade)).toBe(band);
+  });
+
+  it("is a K–8 app: grades above 8th aren't offered and read as no grade", async () => {
+    expect(gradeBand("9")).toBeNull();
+    expect(gradeBand("12")).toBeNull();
+    const res = await api()
+      .post("/api/auth/register")
+      .send({ displayName: "Teen", email: "teen@test.com", password: "Password123!", gradeLevel: "10" });
+    expect(res.status).toBe(400);
   });
 
   it("has no band, and today's behaviour, without a grade", () => {
@@ -75,24 +84,25 @@ describe("AI feedback by grade", () => {
     expect(res.body.feedback.grammar.issues).toHaveLength(3);
   });
 
-  it("expects more from 6th grade and up", async () => {
+  it("expects more from 6th to 8th grade, without asking for a high-school essay voice", async () => {
     const { system } = await analyze("8");
-    expect(system).toContain("6th grade or older");
-    expect(system).toContain("formal school tone");
+    expect(system).toContain("6th to 8th grade");
+    expect(system).toContain("not high school");
+    expect(system).not.toContain("formal school tone");
   });
 
   it("uses the base instructions when there's no grade", async () => {
     const { res, system } = await analyze(null);
-    expect(system).not.toMatch(/kindergarten to 2nd|3rd to 5th|6th grade or older/);
+    expect(system).not.toMatch(/kindergarten to 2nd|3rd to 5th|6th to 8th grade/);
     expect(res.body.feedback.grammar.issues).toHaveLength(3);
   });
 
   it("keeps sentence feedback to grammar for every grade", async () => {
-    const student = await signUp({ gradeLevel: "9" });
+    const student = await signUp({ gradeLevel: "7" });
     fakeOpenAi.chatReplies.push(feedbackReply());
     const res = await api().post("/api/ai/analyze").set(bearer(student.token)).send({ type: "sentence", content: "The dog ran." });
     const system = fakeOpenAi.chatCalls()[0]!.body.messages![0]!.content;
-    expect(system).toContain("6th grade or older");
+    expect(system).toContain("6th to 8th grade");
     expect(system).toContain("single sentence");
     expect(res.body.feedback.evidence).toBeNull();
   });

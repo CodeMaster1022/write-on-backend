@@ -1,6 +1,7 @@
 import type { Types } from "mongoose";
 import { ContestEntry } from "../models/Contest.js";
 import { FEEDBACK_AREAS, FeedbackRun, type FeedbackArea, type IssueCategory } from "../models/FeedbackRun.js";
+import { LessonAttempt } from "../models/Lesson.js";
 import { Revision } from "../models/Revision.js";
 import { Writing } from "../models/Writing.js";
 import { weekStartKey } from "./time.js";
@@ -163,7 +164,7 @@ export interface Badge {
 }
 
 export async function buildProgress(user: ProgressUser, tz: string) {
-  const [writings, runs, revisionCounts, firstEntry, goal] = await Promise.all([
+  const [writings, runs, revisionCounts, firstEntry, goal, lessonsDone] = await Promise.all([
     Writing.find({ userId: user._id }).sort({ createdAt: 1 }).select("type wordCount createdAt").limit(MAX_DOCS).lean(),
     FeedbackRun.find({ userId: user._id }).sort({ createdAt: 1 }).select("ratings issues createdAt").limit(MAX_DOCS).lean(),
     Revision.aggregate<{ _id: unknown; n: number; second: Date }>([
@@ -175,6 +176,7 @@ export async function buildProgress(user: ProgressUser, tz: string) {
     ]),
     ContestEntry.findOne({ userId: user._id }).sort({ createdAt: 1 }).select("createdAt").lean(),
     goalSummaryFor(user, tz),
+    LessonAttempt.find({ userId: user._id }).sort({ createdAt: 1 }).select("createdAt").limit(MAX_DOCS).lean(),
   ]);
 
   // --- skills ---
@@ -244,6 +246,8 @@ export async function buildProgress(user: ProgressUser, tz: string) {
       progress: count(goal.streak.best, 3),
     },
     { key: "contest", title: "Contest writer", description: "Enter a writing contest.", earnedAt: firstEntry?.createdAt ?? null, progress: null },
+    { key: "first_lesson", title: "Lesson learner", description: "Finish a weekly lesson.", earnedAt: lessonsDone[0]?.createdAt ?? null, progress: null },
+    { key: "five_lessons", title: "Lesson star", description: "Finish 5 weekly lessons.", earnedAt: lessonsDone[4]?.createdAt ?? null, progress: count(lessonsDone.length, 5) },
   ];
 
   return {

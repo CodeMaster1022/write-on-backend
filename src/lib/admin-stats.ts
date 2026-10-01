@@ -2,7 +2,8 @@ import { gradeBand, type GradeBand } from "../config/grades.js";
 import { Contest, contestStatus } from "../models/Contest.js";
 import { FEEDBACK_AREAS, FeedbackRun, type IssueCategory } from "../models/FeedbackRun.js";
 import { HelpEvent } from "../models/HelpEvent.js";
-import { INKI_ELEMENTS, InkiQuestion, type InkiElement } from "../models/InkiQuestion.js";
+import { INKI_ELEMENTS, InkiQuestion, isInkiElement, type InkiElement } from "../models/InkiQuestion.js";
+import { Lesson } from "../models/Lesson.js";
 import { User } from "../models/User.js";
 import { WRITING_TYPES, Writing } from "../models/Writing.js";
 import { ELEMENT_LABEL, ISSUE_LABEL } from "./report.js";
@@ -42,6 +43,7 @@ export async function buildOverview() {
     students,
     unconfirmed,
     staleUnconfirmed,
+    staleWaiting,
     newThisWeek,
     newLastWeek,
     pieces,
@@ -54,10 +56,13 @@ export async function buildOverview() {
     activeThisWeek,
     activeLastWeek,
     contests,
+    nextLesson,
+    latestLesson,
   ] = await Promise.all([
     User.countDocuments(STUDENTS),
     User.countDocuments({ ...STUDENTS, emailVerified: false }),
     User.countDocuments({ ...STUDENTS, emailVerified: false, createdAt: { $lt: new Date(now - 3 * DAY) } }),
+    User.countDocuments({ ...STUDENTS, role: "student", parentApprovedAt: null, createdAt: { $lt: new Date(now - 3 * DAY) } }),
     User.countDocuments({ ...STUDENTS, createdAt: { $gte: week } }),
     User.countDocuments({ ...STUDENTS, createdAt: { $gte: prevWeek, $lt: week } }),
     Writing.estimatedDocumentCount(),
@@ -70,12 +75,23 @@ export async function buildOverview() {
     distinctActiveStudents(week),
     distinctActiveStudents(prevWeek, week),
     Contest.find().select("title startsAt endsAt announcedAt").lean(),
+    Lesson.findOne({ startsAt: { $gt: new Date(now) } }).select("_id").lean(),
+    Lesson.findOne({ startsAt: { $lte: new Date(now) } }).sort({ startsAt: -1 }).select("startsAt").lean(),
   ]);
 
   const byStatus = { upcoming: 0, open: 0, judging: 0, announced: 0 };
   for (const c of contests) byStatus[contestStatus(c)] += 1;
 
   const attention: AttentionItem[] = [];
+  // Weekly lessons only work if there's always a next one. Nudge once this
+  // week's lesson is a week old and nothing is scheduled to follow it.
+  if (!nextLesson && (!latestLesson || now - latestLesson.startsAt.getTime() >= 7 * DAY)) {
+    attention.push({
+      key: "lesson",
+      message: latestLesson ? "No lesson is scheduled for next week. Students are still seeing the last one." : "There's no weekly lesson yet. Write the first one.",
+      link: "/app/admin/lessons",
+    });
+  }
   if (byStatus.judging > 0) {
     attention.push({
       key: "judging",
@@ -83,6 +99,13 @@ export async function buildOverview() {
         byStatus.judging === 1 ? "is" : "are"
       } waiting for winners.`,
       link: "/app/admin/contests",
+    });
+  }
+  if (staleWaiting > 0) {
+    attention.push({
+      key: "waiting",
+      message: `${staleWaiting} ${staleWaiting === 1 ? "student is" : "students are"} still waiting for a parent to approve the account after 3 days.`,
+      link: "/app/admin/users?filter=waiting",
     });
   }
   if (staleUnconfirmed > 0) {
@@ -216,7 +239,7 @@ export async function buildAnalytics(days: number, tz: string) {
   for (const q of inkiRows) {
     if (q.blocked) blocked += 1;
     if (q.kind === "define") defines += 1;
-    if (q.kind === "check" && q.element && !q.blocked) {
+    if (q.kind === "check" && isInkiElement(q.element) && !q.blocked) {
       const e = checkStats.get(q.element) ?? { total: 0, notYet: 0 };
       e.total += 1;
       if (q.verdict === "not_yet") e.notYet += 1;
@@ -254,7 +277,7 @@ export async function buildAnalytics(days: number, tz: string) {
       byBand: [
         { key: "youngest", label: "Kindergarten to 2nd", count: bands.youngest },
         { key: "middle", label: "3rd to 5th", count: bands.middle },
-        { key: "oldest", label: "6th and up", count: bands.oldest },
+        { key: "oldest", label: "6th to 8th", count: bands.oldest },
         { key: "none", label: "No grade set", count: bands.none },
       ],
     },

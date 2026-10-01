@@ -69,6 +69,32 @@ export const sharedReportLimiter = limiter({
   message: "Too many requests. Please wait a few minutes and try again.",
 });
 
+/** POST /api/stt/token — each call mints a Deepgram token; one per dictation is plenty. */
+export const sttLimiter = limiter({
+  windowMs: 10 * MINUTE,
+  limit: 30,
+  byUser: true,
+  message: "Voice typing needs a short break. Try again in a few minutes, or type for now.",
+});
+
+/**
+ * POST /api/auth/login — keyed by the email being tried, and only failed tries count,
+ * so a whole classroom can still sign in from one school address.
+ */
+export const loginLimiter = rateLimit({
+  windowMs: 15 * MINUTE,
+  limit: 10,
+  standardHeaders: "draft-8",
+  legacyHeaders: false,
+  skipSuccessfulRequests: true,
+  keyGenerator: (req: Request) => {
+    const email = (req.body as { email?: unknown } | undefined)?.email;
+    return typeof email === "string" ? email.trim().toLowerCase() : "no-email";
+  },
+  handler: (_req, _res, next) =>
+    next(new HttpError(429, "Too many sign-in tries for that email. Please wait 15 minutes, or reset your password.")),
+});
+
 /**
  * POST /api/tts/prompt — instructions voiced for visitors who haven't signed in. Keyed by
  * network address, and generous because a classroom can share one. Copies already saved are

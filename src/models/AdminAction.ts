@@ -4,12 +4,17 @@ export const ADMIN_ACTIONS = [
   "user_delete",
   "user_reset_password",
   "user_resend_confirmation",
+  "user_resend_parent_approval",
+  "user_comp",
   "contest_create",
   "contest_update",
   "contest_delete",
   "contest_winner_mark",
   "contest_winner_unmark",
   "contest_announce",
+  "lesson_create",
+  "lesson_update",
+  "lesson_delete",
 ] as const;
 export type AdminActionKind = (typeof ADMIN_ACTIONS)[number];
 
@@ -24,6 +29,7 @@ const adminActionSchema = new Schema(
     kind: { type: String, enum: ADMIN_ACTIONS, required: true },
     targetUserId: { type: Schema.Types.ObjectId, default: null },
     contestTitle: { type: String, default: null, maxlength: 80 },
+    lessonTitle: { type: String, default: null, maxlength: 80 },
     note: { type: String, default: null, maxlength: 120 },
   },
   { timestamps: true },

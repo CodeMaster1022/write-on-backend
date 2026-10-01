@@ -46,6 +46,18 @@ const userSchema = new Schema(
      */
     emailVerified: { type: Boolean, default: true },
 
+    /** A parent's or guardian's address, asked for at sign-up. Null on accounts made before parent approval existed. */
+    parentEmail: { type: String, lowercase: true, trim: true, maxlength: 160, default: null },
+    /**
+     * When a parent approved the account from the email we sent them. Until then
+     * a student account is paused: it can sign in, but can't write or use any feature.
+     */
+    parentApprovedAt: { type: Date, default: null },
+    /** When the parent was emailed a second time about approving (three days in, once). */
+    parentReminderAt: { type: Date, default: null },
+    /** An email each time a new weekly lesson is posted. Off from the Account page. */
+    emailLessons: { type: Boolean, default: true },
+
     /** When the password was last reset. */
     passwordChangedAt: { type: Date, default: null },
     /** Every session carries this number. Raising it (on a password reset) signs out every device at once. */
@@ -86,6 +98,11 @@ export const User = model<UserAttrs, import("mongoose").Model<UserAttrs, {}, { v
   userSchema,
 );
 
+/** Admins and teachers are grown-ups; every student account needs a parent's approval. */
+export function parentApproved(user: Pick<UserAttrs, "parentApprovedAt" | "isAdmin" | "role">): boolean {
+  return Boolean(user.parentApprovedAt) || user.isAdmin === true || user.role === "teacher";
+}
+
 /** Shape sent to the client — never includes passwordHash. */
 export function publicUser(user: UserDoc) {
   return {
@@ -93,6 +110,9 @@ export function publicUser(user: UserDoc) {
     displayName: user.displayName,
     email: user.email ?? null,
     emailVerified: user.emailVerified ?? true,
+    parentEmail: user.parentEmail ?? null,
+    parentApproved: parentApproved(user),
+    emailLessons: user.emailLessons ?? true,
     role: user.role,
     isAdmin: user.isAdmin ?? false,
     gradeLevel: user.gradeLevel ?? null,

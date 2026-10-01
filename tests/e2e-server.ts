@@ -22,6 +22,13 @@ Object.assign(process.env, {
   EMAIL_FROM: "Write on! <hello@e2e.test>",
   APP_URL: process.env.E2E_CLIENT_ORIGIN ?? "http://localhost:3210",
   SENTRY_DSN: "",
+  // Audio stays on disk during browser tests; the real Cloudinary account in server/.env must never be touched.
+  CLOUDINARY_URL: "",
+  CRON_SECRET: "e2e-cron-secret-long-enough",
+  STRIPE_SECRET_KEY: "sk_test_fake",
+  STRIPE_WEBHOOK_SECRET: "whsec_test_fake",
+  STRIPE_PRICE_MONTHLY: "price_monthly_test",
+  STRIPE_PRICE_YEARLY: "price_yearly_test",
 });
 globalThis.fetch = fakeFetch as typeof fetch;
 

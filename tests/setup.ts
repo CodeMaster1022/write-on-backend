@@ -4,7 +4,7 @@ import os from "node:os";
 import path from "node:path";
 import mongoose from "mongoose";
 import { afterAll, afterEach, beforeAll, beforeEach, expect } from "vitest";
-import { blockedRequests, fakeCloud, fakeFetch, fakeOpenAi, fakeResend } from "./fake-network.js";
+import { blockedRequests, fakeCloud, fakeFetch, fakeOpenAi, fakeResend, fakeStripe } from "./fake-network.js";
 
 // These settings must be in place before the app is imported, and they win
 // over server/.env, so a test can never reach the real database or services.
@@ -27,6 +27,11 @@ Object.assign(process.env, {
   CLOUDINARY_URL: "cloudinary://test-key:test-secret@test-cloud",
   EMAIL_FROM: "Write on! <hello@test.example>",
   APP_URL: "https://write-on.test",
+  CRON_SECRET: "test-cron-secret-long-enough",
+  STRIPE_SECRET_KEY: "sk_test_fake",
+  STRIPE_WEBHOOK_SECRET: "whsec_test_fake",
+  STRIPE_PRICE_MONTHLY: "price_monthly_test",
+  STRIPE_PRICE_YEARLY: "price_yearly_test",
   TTS_CACHE_DIR: ttsDir,
 });
 
@@ -40,6 +45,7 @@ beforeEach(() => {
   fakeOpenAi.reset();
   fakeResend.reset();
   fakeCloud.reset();
+  fakeStripe.reset();
   blockedRequests.length = 0;
 });
 

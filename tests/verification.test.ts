@@ -11,14 +11,18 @@ const tokenIn = (text: string) => text.match(/https:\/\/write-on\.test\/verify-e
 const confirmationFor = (email: string) =>
   fakeResend.sent.filter((m) => m.to.includes(email) && m.subject === "Confirm your email for Write on!").at(-1);
 
+/** A sign-up whose parent has already approved, so only the student's own email is left to confirm. */
 async function register(name = "Ada") {
   const email = `new-${randomUUID().slice(0, 8)}@test.com`;
-  const res = await api().post("/api/auth/register").send({ displayName: name, email, password: "Password123!", gradeLevel: "4" });
+  const res = await api()
+    .post("/api/auth/register")
+    .send({ displayName: name, email, password: "Password123!", parentEmail: `parent-of-${email}`, gradeLevel: "4" });
+  if (res.status === 201) await User.updateOne({ _id: res.body.user.id }, { parentApprovedAt: new Date() });
   return { res, email, token: res.body.token as string };
 }
 
 describe("confirming the email at sign-up", () => {
-  it("sends a confirmation link, and the student can write straight away", async () => {
+  it("sends a confirmation link, and the student can write (once a parent approves) before confirming", async () => {
     const { res, email, token } = await register("Ada");
     expect(res.status).toBe(201);
     expect(res.body.user.emailVerified).toBe(false);
@@ -28,7 +32,7 @@ describe("confirming the email at sign-up", () => {
     expect(mail.text).toContain("Hi Ada");
     expect(tokenIn(mail.text)).toBeTruthy();
 
-    // Writing works before confirming.
+    // Writing works before confirming the student's own email.
     const piece = await api().post("/api/writings").set(bearer(token)).send({ type: "sentence", content: "I can write already." });
     expect(piece.status).toBe(201);
   });

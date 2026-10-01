@@ -4,7 +4,7 @@ import { AdminAction, type AdminActionKind } from "../models/AdminAction.js";
 export async function logAdminAction(
   adminId: unknown,
   kind: AdminActionKind,
-  detail: { targetUserId?: unknown; contestTitle?: string; note?: string } = {},
+  detail: { targetUserId?: unknown; contestTitle?: string; lessonTitle?: string; note?: string } = {},
 ): Promise<void> {
   try {
     await AdminAction.create({ adminId, kind, ...detail });

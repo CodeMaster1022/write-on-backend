@@ -3,10 +3,12 @@ import { Router } from "express";
 import { env } from "../config/env.js";
 import { requireAuth } from "../middleware/auth.js";
 import { HttpError } from "../middleware/error.js";
+import { sttLimiter } from "../middleware/rate-limit.js";
+import { requirePremium } from "../lib/plan.js";
 
 export const sttRouter = Router();
 
-sttRouter.use(requireAuth);
+sttRouter.use(requireAuth, sttLimiter);
 
 /**
  * Mints a short-lived Deepgram access token so the browser can open a live
@@ -15,7 +17,9 @@ sttRouter.use(requireAuth);
  * endpoints require a server-side call anyway (browsers hit CORS calling
  * them directly), so this is also the only place that can mint one.
  */
-sttRouter.post("/token", async (_req, res) => {
+sttRouter.post("/token", async (req, res) => {
+  // Every minute of voice typing is paid for, so it's Premium only.
+  await requirePremium(req, "voice_typing");
   if (!env.DEEPGRAM_API_KEY) {
     throw new HttpError(503, "Voice typing isn't set up yet. Add DEEPGRAM_API_KEY to the server .env file.");
   }

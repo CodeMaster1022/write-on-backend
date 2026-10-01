@@ -11,6 +11,7 @@ import { reportLimiter, sharedReportLimiter } from "../middleware/rate-limit.js"
 import { ReportEmail, ReportShare } from "../models/ReportShare.js";
 import { User } from "../models/User.js";
 import { requireVerifiedEmail } from "../lib/verification.js";
+import { planFor, requirePremium } from "../lib/plan.js";
 
 export const reportRouter = Router();
 
@@ -40,16 +41,20 @@ function sendDocx(res: Response, buffer: Buffer, report: Report) {
 // The student's own report
 // ---------------------------------------------------------------------------
 
+/** The numbers are free; the written AI summary (and everything that leaves the app) is Premium. */
 reportRouter.get("/me", requireAuth, reportLimiter, async (req, res) => {
   const { days } = periodSchema.parse(req.query);
   const tz = timeZoneOf(req);
-  const report = await withSummary(req.user!, await buildReport(req.user!, days, tz));
-  res.json({ report, document: reportDocument(report, tz) });
+  const premium = (await planFor(req.user!)).plan === "premium";
+  const numbers = await buildReport(req.user!, days, tz);
+  const report = premium ? await withSummary(req.user!, numbers) : numbers;
+  res.json({ report, document: reportDocument(report, tz), premium });
 });
 
 reportRouter.get("/me.docx", requireAuth, reportLimiter, async (req, res) => {
   const { days } = periodSchema.parse(req.query);
   const tz = timeZoneOf(req);
+  await requirePremium(req, "report");
   const report = await withSummary(req.user!, await buildReport(req.user!, days, tz));
   sendDocx(res, await reportDocx(report, tz), report);
 });
@@ -61,6 +66,7 @@ const emailSchema = periodSchema.extend({
 reportRouter.post("/email", requireAuth, reportLimiter, async (req, res) => {
   const { to, days } = emailSchema.parse(req.body);
   requireVerifiedEmail(req.user!);
+  await requirePremium(req, "report");
   const tz = timeZoneOf(req);
 
   const sentToday = await ReportEmail.countDocuments({ userId: req.user!._id, createdAt: { $gte: startOfToday(tz) } });
@@ -104,6 +110,7 @@ reportRouter.get("/shares", requireAuth, reportLimiter, async (req, res) => {
 
 reportRouter.post("/shares", requireAuth, reportLimiter, async (req, res) => {
   const { days } = periodSchema.parse(req.body ?? {});
+  await requirePremium(req, "report");
 
   const active = await ReportShare.countDocuments(activeShareFilter(req.user!._id));
   if (active >= MAX_ACTIVE_SHARES) {

@@ -19,21 +19,27 @@ export interface TestUser {
 }
 
 /**
- * A new student account. Its email is confirmed unless `verified: false`, and the
- * confirmation email sign-up sends is cleared, so tests only see the emails they cause.
+ * A new student account, approved by its parent unless `approved: false`. Its email is
+ * confirmed unless `verified: false`. The emails sign-up sends are cleared, so tests only
+ * see the emails they cause.
  */
-export async function signUp(overrides: { gradeLevel?: string; displayName?: string; verified?: boolean } = {}): Promise<TestUser> {
-  const email = `student-${randomUUID().slice(0, 8)}@test.com`;
+export async function signUp(
+  overrides: { gradeLevel?: string; displayName?: string; verified?: boolean; approved?: boolean } = {},
+): Promise<TestUser & { parentEmail: string }> {
+  const id = randomUUID().slice(0, 8);
+  const email = `student-${id}@test.com`;
+  const parentEmail = `parent-${id}@test.com`;
   const password = "Password123!";
   const res = await api()
     .post("/api/auth/register")
-    .send({ displayName: overrides.displayName ?? "Sam", email, password, gradeLevel: overrides.gradeLevel ?? "4" });
+    .send({ displayName: overrides.displayName ?? "Sam", email, password, parentEmail, gradeLevel: overrides.gradeLevel ?? "4" });
   if (res.status !== 201) throw new Error(`sign-up failed: ${res.status} ${JSON.stringify(res.body)}`);
-  if (overrides.verified !== false) {
-    await User.updateOne({ _id: res.body.user.id }, { emailVerified: true });
-    fakeResend.sent = fakeResend.sent.filter((m) => !m.to.includes(email));
-  }
-  return { token: res.body.token, id: res.body.user.id, email, password };
+  const set: Record<string, unknown> = {};
+  if (overrides.verified !== false) set.emailVerified = true;
+  if (overrides.approved !== false) set.parentApprovedAt = new Date();
+  if (Object.keys(set).length) await User.updateOne({ _id: res.body.user.id }, set);
+  fakeResend.sent = fakeResend.sent.filter((m) => !m.to.includes(email) && !m.to.includes(parentEmail));
+  return { token: res.body.token, id: res.body.user.id, email, parentEmail, password };
 }
 
 export async function signUpAdmin(): Promise<TestUser> {

@@ -6,6 +6,7 @@ import { requireAuth } from "../middleware/auth.js";
 import { HttpError } from "../middleware/error.js";
 import { analyzeLimiter } from "../middleware/rate-limit.js";
 import { chatJson } from "../lib/openai.js";
+import { requirePremiumOrFreeUse } from "../lib/plan.js";
 import { startOfToday, timeZoneOf } from "../lib/time.js";
 import { FeedbackRun, ISSUE_CATEGORIES } from "../models/FeedbackRun.js";
 import { WRITING_TYPES, type WritingType } from "../models/Writing.js";
@@ -52,10 +53,11 @@ const BAND_NOTE: Record<GradeBand, string> = {
 - For evidence and flow, one reason or detail, and simple joining words like "and", "then" or "because", are strong work at this age. Rate generously.`,
   middle: `This student is in 3rd to 5th grade.
 - Expect complete sentences, correct capitals and end marks, a clear main idea backed by at least one reason or example, and simple transition words like "first", "next", "also" and "finally".`,
-  oldest: `This student is in 6th grade or older.
-- Expect specific, relevant evidence for each claim, not just opinions; varied sentence beginnings and lengths; precise word choice; a formal school tone with no casual language; and transitions that show how ideas relate, like "however", "as a result" and "for example".
+  oldest: `This student is in 6th to 8th grade (middle school).
+- Expect a clear main idea backed by a specific reason, example or detail for each point; some variety in how sentences begin; and transitions that show how ideas relate, like "however", "as a result" and "for example".
+- Don't expect a formal essay voice or a tightly argued case: this is middle school, not high school. A friendly, clear voice is fine. Only mention casual language if it gets in the way of being understood.
 - Rate against these expectations: a 3 means strong work for this grade.
-- You may use terms like "claim", "evidence", "transition" and "tone".`,
+- You may use terms like "main idea", "evidence" and "transition".`,
 };
 
 const YOUNGEST_MAX_ISSUES = 1;
@@ -157,11 +159,14 @@ aiRouter.post("/analyze", analyzeLimiter, async (req, res) => {
   }
 
   const { type, content } = bodySchema.parse(req.body);
+  const tz = timeZoneOf(req);
+  // Premium, or one of this week's free checks.
+  const { freeLeft } = await requirePremiumOrFreeUse(req, "ai_feedback", tz);
 
   // Only successful runs are recorded, so failed OpenAI calls don't eat the allowance.
   const usedToday = await FeedbackRun.countDocuments({
     userId: req.user!._id,
-    createdAt: { $gte: startOfToday(timeZoneOf(req)) },
+    createdAt: { $gte: startOfToday(tz) },
   });
   if (usedToday >= ANALYZE_PER_DAY) {
     throw new HttpError(429, "You've used all of today's AI feedback checks. Keep writing — it resets tomorrow!", {
@@ -209,5 +214,6 @@ aiRouter.post("/analyze", analyzeLimiter, async (req, res) => {
     ),
   });
 
-  res.json({ feedback, runId: run.id as string });
+  // On the free plan, how many of this week's checks are left after this one (null on Premium).
+  res.json({ feedback, runId: run.id as string, freeLeft: freeLeft === null ? null : freeLeft - 1 });
 });

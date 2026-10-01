@@ -1,8 +1,17 @@
 import type { NextFunction, Request, Response } from "express";
 import jwt from "jsonwebtoken";
 import { env } from "../config/env.js";
-import { User, type UserDoc } from "../models/User.js";
+import { User, parentApproved, type UserDoc } from "../models/User.js";
 import { HttpError } from "./error.js";
+
+export const PARENT_APPROVAL_CODE = "parent_approval_needed";
+
+/** Shown while the account is paused. The account routes stay open so the student can fix the parent's email, resend, or delete the account. */
+function parentHoldMessage(user: UserDoc): string {
+  return user.parentEmail
+    ? `Your account is waiting for a parent to approve it. We emailed ${user.parentEmail}.`
+    : "A parent or guardian needs to approve your account before you can use it. Add their email on your account page.";
+}
 
 export interface TokenPayload {
   sub: string;
@@ -48,6 +57,12 @@ export async function requireAuth(req: Request, _res: Response, next: NextFuncti
   if (user.isGuest) throw new HttpError(401, "Trying Write on! without an account has changed. Please log in or create an account.");
   if ((payload.v ?? 0) !== (user.sessionVersion ?? 0)) {
     throw new HttpError(401, "Your password was changed. Please sign in again.");
+  }
+
+  // A paused student account can only reach the account routes (see who's approving, resend, export, delete).
+  const path = req.originalUrl.split("?")[0] ?? "";
+  if (!parentApproved(user) && !path.startsWith("/api/auth/")) {
+    throw new HttpError(403, parentHoldMessage(user), { code: PARENT_APPROVAL_CODE });
   }
 
   req.user = user;

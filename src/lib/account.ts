@@ -3,7 +3,8 @@ import { ContestEntry } from "../models/Contest.js";
 import { FeedbackRun } from "../models/FeedbackRun.js";
 import { HelpEvent } from "../models/HelpEvent.js";
 import { InkiQuestion } from "../models/InkiQuestion.js";
-import { EmailLog, EmailVerification, PasswordReset } from "../models/PasswordReset.js";
+import { LessonAttempt } from "../models/Lesson.js";
+import { EmailLog, EmailVerification, ParentApproval, PasswordReset } from "../models/PasswordReset.js";
 import { ReportEmail, ReportShare, ReportSummary } from "../models/ReportShare.js";
 import { Revision } from "../models/Revision.js";
 import { User } from "../models/User.js";
@@ -18,11 +19,13 @@ export async function deleteAccountData(userId: Types.ObjectId | string): Promis
     InkiQuestion.deleteMany({ userId }),
     HelpEvent.deleteMany({ userId }),
     ContestEntry.deleteMany({ userId }),
+    LessonAttempt.deleteMany({ userId }),
     ReportShare.deleteMany({ userId }),
     ReportSummary.deleteMany({ userId }),
     ReportEmail.deleteMany({ userId }),
     PasswordReset.deleteMany({ userId }),
     EmailVerification.deleteMany({ userId }),
+    ParentApproval.deleteMany({ userId }),
     EmailLog.deleteMany({ userId }),
   ]);
   await User.deleteOne({ _id: userId });

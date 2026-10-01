@@ -9,6 +9,7 @@ import { publicUser } from "../models/User.js";
 import { requireAuth } from "../middleware/auth.js";
 import { sendEmail } from "../lib/email.js";
 import { writingCopyEmail } from "../lib/emails.js";
+import { requireSchoolSafe } from "../lib/moderation.js";
 import { startOfToday, timeZoneOf } from "../lib/time.js";
 import { requireVerifiedEmail } from "../lib/verification.js";
 import { EmailLog } from "../models/PasswordReset.js";
@@ -79,11 +80,24 @@ const saveExtrasSchema = z.object({
   feedbackRunId: objectId.optional(),
 });
 
+/**
+ * Pieces that earn ink drops per day. Saving never stops, but after this many
+ * the drops do, so nobody can fill the closet by saving one-word sentences all afternoon.
+ */
+export const REWARDED_PIECES_PER_DAY = 10;
+
 writingsRouter.post("/", async (req, res) => {
   const body = createSchema.extend(saveExtrasSchema.shape).parse(req.body);
   const user = req.user!;
+  await requireSchoolSafe([body.title, body.content]);
 
-  const earned = REWARD_PER_TYPE[body.type];
+  const rewardedToday = await Writing.countDocuments({
+    userId: user._id,
+    inkDropsEarned: { $gt: 0 },
+    createdAt: { $gte: startOfToday(timeZoneOf(req)) },
+  });
+  const rewardCapReached = rewardedToday >= REWARDED_PIECES_PER_DAY;
+  const earned = rewardCapReached ? 0 : REWARD_PER_TYPE[body.type];
 
   const writing = await Writing.create({
     userId: user._id,
@@ -113,6 +127,7 @@ writingsRouter.post("/", async (req, res) => {
   res.status(201).json({
     writing,
     inkDropsEarned: earned,
+    rewardCapReached,
     user: publicUser(user),
   });
 });
@@ -188,6 +203,7 @@ writingsRouter.patch("/:id", async (req, res) => {
   }
 
   const contentChanged = body.content !== undefined && body.content !== writing.content;
+  await requireSchoolSafe([body.title !== writing.title ? body.title : null, contentChanged ? body.content : null]);
   if (contentChanged) {
     const saved = await Revision.countDocuments({ writingId: writing._id });
     if (saved >= MAX_REVISIONS) {
@@ -260,10 +276,14 @@ writingsRouter.post("/:id/email", async (req, res) => {
   res.status(204).send();
 });
 
+/** Removes a piece and its versions. The student keeps the ink drops it earned; the piece count goes down. */
 writingsRouter.delete("/:id", async (req, res) => {
   const id = writingId(req.params.id);
-  const result = await Writing.deleteOne({ _id: id, userId: req.user!._id });
+  const user = req.user!;
+  const result = await Writing.deleteOne({ _id: id, userId: user._id });
   if (result.deletedCount === 0) throw new HttpError(404, NOT_FOUND);
   await Revision.deleteMany({ writingId: id });
-  res.status(204).send();
+  user.writingCount = Math.max(0, user.writingCount - 1);
+  await user.save();
+  res.json({ user: publicUser(user) });
 });

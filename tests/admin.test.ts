@@ -84,7 +84,7 @@ describe("analytics", () => {
 
   it("adds up writing, feedback, Inki and grade groups, without any of the writing", async () => {
     const young = await signUp({ gradeLevel: "1" });
-    const old = await signUp({ gradeLevel: "9" });
+    const old = await signUp({ gradeLevel: "8" });
     await saveWriting(young.token, { type: "sentence", content: "A very private secret sentence.", activeSeconds: 120 });
     await saveWriting(old.token, { type: "essay", content: "Another private essay about my secret dragon.", activeSeconds: 240 });
 

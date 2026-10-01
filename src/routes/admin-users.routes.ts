@@ -7,13 +7,16 @@ import { logAdminAction } from "../lib/audit.js";
 import { sendPasswordReset } from "../lib/password-reset.js";
 import { timeZoneOf } from "../lib/time.js";
 import { sendVerificationEmail } from "../lib/verification.js";
+import { sendParentApprovalEmail } from "../lib/parent-approval.js";
+import { ensureFamily, planFor } from "../lib/plan.js";
+import { Family, planOf } from "../models/Family.js";
 import { requireAdmin, requireAuth } from "../middleware/auth.js";
 import { HttpError } from "../middleware/error.js";
 import { AdminAction } from "../models/AdminAction.js";
 import { ContestEntry } from "../models/Contest.js";
 import { FeedbackRun } from "../models/FeedbackRun.js";
 import { InkiQuestion } from "../models/InkiQuestion.js";
-import { User } from "../models/User.js";
+import { User, parentApproved } from "../models/User.js";
 import { Writing } from "../models/Writing.js";
 
 /**
@@ -50,7 +53,7 @@ adminUsersRouter.get("/analytics", async (req, res) => {
 // Users
 // ---------------------------------------------------------------------------
 
-const FILTERS = ["students", "unconfirmed", "inactive", "all"] as const;
+const FILTERS = ["students", "waiting", "unconfirmed", "inactive", "all"] as const;
 
 const listSchema = z.object({
   q: z.string().trim().max(60).optional(),
@@ -63,6 +66,8 @@ function filterQuery(filter: (typeof FILTERS)[number]): Record<string, unknown> 
   switch (filter) {
     case "students":
       return { isGuest: false, isAdmin: false };
+    case "waiting":
+      return { isGuest: false, isAdmin: false, role: "student", parentApprovedAt: null };
     case "unconfirmed":
       return { isGuest: false, isAdmin: false, emailVerified: false };
     case "inactive":
@@ -85,7 +90,10 @@ function listedUser(u: {
   email?: string | null;
   gradeLevel?: string | null;
   isAdmin?: boolean;
+  role?: "student" | "teacher";
   emailVerified?: boolean;
+  parentEmail?: string | null;
+  parentApprovedAt?: Date | null;
   writingCount: number;
   lastWroteAt?: Date | null;
   createdAt: Date;
@@ -97,6 +105,8 @@ function listedUser(u: {
     grade: normalizeGrade(u.gradeLevel),
     isAdmin: u.isAdmin ?? false,
     emailConfirmed: u.emailVerified ?? true,
+    parentEmail: u.parentEmail ?? null,
+    parentApproved: parentApproved({ parentApprovedAt: u.parentApprovedAt ?? null, isAdmin: u.isAdmin ?? false, role: u.role ?? "student" }),
     pieces: u.writingCount,
     lastWroteAt: u.lastWroteAt ?? null,
     joined: u.createdAt,
@@ -118,11 +128,18 @@ adminUsersRouter.get("/users", async (req, res) => {
       .sort({ createdAt: -1 })
       .skip((page - 1) * PAGE_SIZE)
       .limit(PAGE_SIZE)
-      .select("displayName email gradeLevel isAdmin emailVerified writingCount lastWroteAt createdAt")
+      .select("displayName email gradeLevel isAdmin role emailVerified parentEmail parentApprovedAt writingCount lastWroteAt createdAt")
       .lean(),
   ]);
 
-  res.json({ total, page, pageSize: PAGE_SIZE, users: users.map(listedUser) });
+  // The plan is per family (parent email), so look the families up once for the page.
+  const parentEmails = [...new Set(users.flatMap((u) => (u.parentEmail ? [u.parentEmail] : [])))];
+  const families = parentEmails.length ? await Family.find({ parentEmail: { $in: parentEmails } }).lean() : [];
+  const familyByEmail = new Map(families.map((f) => [f.parentEmail, f]));
+  const planFor = (u: (typeof users)[number]) =>
+    u.isAdmin || u.role === "teacher" ? "premium" : planOf(u.parentEmail ? (familyByEmail.get(u.parentEmail) ?? null) : null).plan;
+
+  res.json({ total, page, pageSize: PAGE_SIZE, users: users.map((u) => ({ ...listedUser(u), plan: planFor(u) })) });
 });
 
 async function requireUser(raw: unknown) {
@@ -145,6 +162,9 @@ adminUsersRouter.get("/users/:id", async (req, res) => {
     ]),
   ]);
 
+  const plan = await planFor(user);
+  const family = user.parentEmail ? await Family.findOne({ parentEmail: user.parentEmail }).lean() : null;
+
   res.json({
     user: {
       ...listedUser(user),
@@ -152,6 +172,7 @@ adminUsersRouter.get("/users/:id", async (req, res) => {
       band: gradeBand(user.gradeLevel),
       inkDrops: user.inkDrops,
       weeklyGoal: user.weeklyGoal ?? null,
+      plan: { ...plan, compNote: family?.compNote ?? "", trialEndsAt: family?.trialEndsAt ?? null },
     },
     counts: {
       pieces: user.writingCount,
@@ -175,6 +196,41 @@ adminUsersRouter.post("/users/:id/resend-confirmation", async (req, res) => {
 
   await logAdminAction(req.user!._id, "user_resend_confirmation", { targetUserId: user._id });
   res.json({ ok: true });
+});
+
+adminUsersRouter.post("/users/:id/resend-parent-approval", async (req, res) => {
+  const user = await requireUser(req.params.id);
+  if (parentApproved(user)) throw new HttpError(400, "This account is already approved.");
+  if (!user.parentEmail) throw new HttpError(400, "This account has no parent email yet. The student adds one on their account page.");
+
+  const result = await sendParentApprovalEmail(user);
+  if (result === "limit") throw new HttpError(429, "3 approval emails were already sent to the parent today.");
+  if (result === "failed") throw new HttpError(502, "Couldn't send the email right now. Please try again in a few minutes.");
+
+  await logAdminAction(req.user!._id, "user_resend_parent_approval", { targetUserId: user._id });
+  res.json({ ok: true });
+});
+
+const compSchema = z.object({
+  /** Months of free Premium, "forever", or "none" to take a comp away. */
+  months: z.union([z.number().int().min(1).max(120), z.literal("forever"), z.literal("none")]),
+  note: z.string().trim().max(120).default(""),
+});
+
+/** Gives a family Premium without paying (a tutor, a friend, a support case). Covers every child with that parent email. */
+adminUsersRouter.post("/users/:id/comp", async (req, res) => {
+  const { months, note } = compSchema.parse(req.body);
+  const user = await requireUser(req.params.id);
+  if (!user.parentEmail) throw new HttpError(400, "This account has no parent email, so there's no family to give Premium to.");
+
+  const family = await ensureFamily(user.parentEmail);
+  family.compUntil = months === "none" ? null : months === "forever" ? new Date("2999-01-01") : new Date(Date.now() + months * 30 * DAY);
+  family.compNote = months === "none" ? "" : note;
+  await family.save();
+
+  const what = months === "none" ? "took free Premium away" : months === "forever" ? "free Premium, no end date" : `free Premium for ${months} ${months === 1 ? "month" : "months"}`;
+  await logAdminAction(req.user!._id, "user_comp", { targetUserId: user._id, note: what });
+  res.json({ ok: true, plan: planOf(family) });
 });
 
 adminUsersRouter.post("/users/:id/password-reset", async (req, res) => {
@@ -245,6 +301,7 @@ adminUsersRouter.get("/activity", async (req, res) => {
       student: a.targetUserId ? (nameOf.get(String(a.targetUserId)) ?? null) : null,
       hasStudent: a.targetUserId !== null,
       contest: a.contestTitle,
+      lesson: a.lessonTitle,
       note: a.note,
     })),
   });

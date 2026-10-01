@@ -15,17 +15,17 @@ describe("sign-up and sign-in", () => {
   it("creates a student account and returns a session", async () => {
     const res = await api()
       .post("/api/auth/register")
-      .send({ displayName: "Mia", email: "mia@test.com", password: "Password123!", gradeLevel: "3" });
+      .send({ displayName: "Mia", email: "mia@test.com", password: "Password123!", parentEmail: "mum@test.com", gradeLevel: "3" });
     expect(res.status).toBe(201);
     expect(res.body.token).toBeTruthy();
-    expect(res.body.user).toMatchObject({ displayName: "Mia", role: "student", gradeLevel: "3", isAdmin: false });
+    expect(res.body.user).toMatchObject({ displayName: "Mia", role: "student", gradeLevel: "3", isAdmin: false, parentEmail: "mum@test.com", parentApproved: false });
     expect(JSON.stringify(res.body)).not.toMatch(/passwordHash/i);
   });
 
   it("never lets sign-up choose the teacher role", async () => {
     const res = await api()
       .post("/api/auth/register")
-      .send({ displayName: "T", email: "t@test.com", password: "Password123!", role: "teacher" });
+      .send({ displayName: "T", email: "t@test.com", password: "Password123!", parentEmail: "p@test.com", role: "teacher" });
     expect(res.status).toBe(201);
     expect(res.body.user.role).toBe("student");
   });
@@ -38,7 +38,7 @@ describe("sign-up and sign-in", () => {
     expect(short.status).toBe(400);
 
     const first = await signUp();
-    const taken = await api().post("/api/auth/register").send({ displayName: "B", email: first.email, password: "Password123!" });
+    const taken = await api().post("/api/auth/register").send({ displayName: "B", email: first.email, password: "Password123!", parentEmail: "p@test.com" });
     expect(taken.status).toBe(409);
   });
 
@@ -48,6 +48,18 @@ describe("sign-up and sign-in", () => {
     expect(ok.status).toBe(200);
     const bad = await api().post("/api/auth/login").send({ email: user.email, password: "wrong-password" });
     expect(bad.status).toBe(401);
+  });
+
+  it("locks sign-in for an email after 10 wrong passwords, without touching other emails", async () => {
+    const user = await signUp();
+    const other = await signUp();
+    for (let i = 0; i < 10; i++) {
+      expect((await api().post("/api/auth/login").send({ email: user.email, password: "wrong-password" })).status).toBe(401);
+    }
+    const locked = await api().post("/api/auth/login").send({ email: user.email, password: user.password });
+    expect(locked.status).toBe(429);
+    expect(locked.body.error).toContain("wait 15 minutes");
+    expect((await api().post("/api/auth/login").send({ email: other.email, password: other.password })).status).toBe(200);
   });
 
   describe("sign-in log lines", () => {
@@ -78,7 +90,9 @@ describe("sign-up and sign-in", () => {
   });
 
   it("signs out a guest account left over from before, and keeps it out of everything", async () => {
-    const created = await api().post("/api/auth/register").send({ displayName: "Old Guest", email: "old-guest@test.com", password: "Password123!" });
+    const created = await api()
+      .post("/api/auth/register")
+      .send({ displayName: "Old Guest", email: "old-guest@test.com", password: "Password123!", parentEmail: "p@test.com" });
     await User.collection.updateOne({ email: "old-guest@test.com" }, { $set: { isGuest: true } });
 
     const res = await api().get("/api/auth/me").set(bearer(created.body.token));

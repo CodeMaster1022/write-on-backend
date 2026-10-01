@@ -52,6 +52,25 @@ const schema = z.object({
   EMAIL_FROM: z.string().default("Write on! <onboarding@resend.dev>"),
   /** The website address used in links inside emails. Defaults to the first CLIENT_ORIGIN. */
   APP_URL: z.string().url().optional(),
+  /**
+   * Lets a scheduler call GET /api/jobs/daily (Vercel Cron sends it as a bearer token). Without
+   * it the route is off, and the daily jobs can be run by hand with `npm run daily-jobs`.
+   */
+  CRON_SECRET: z.string().min(16).optional(),
+
+  // Premium plan, paid by parents through Stripe Checkout. All four are needed for
+  // upgrading to work; without them the app runs with every family on the free plan
+  // (plus the 14-day trial) and the upgrade buttons say so.
+  STRIPE_SECRET_KEY: z.string().optional(),
+  STRIPE_WEBHOOK_SECRET: z.string().optional(),
+  /** Stripe price IDs (price_…) for the two ways to pay for the one plan. */
+  STRIPE_PRICE_MONTHLY: z.string().optional(),
+  STRIPE_PRICE_YEARLY: z.string().optional(),
+  /** Let Stripe Tax work out sales tax at checkout (needs Stripe Tax turned on in the dashboard). */
+  STRIPE_AUTOMATIC_TAX: z
+    .enum(["true", "false"])
+    .default("false")
+    .transform((v) => v === "true"),
 });
 
 const parsed = schema.safeParse(process.env);
